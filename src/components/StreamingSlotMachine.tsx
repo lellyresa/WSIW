@@ -35,7 +35,21 @@ interface ContentItem {
 }
 
 // Add a new interface for content with actual providers
-interface ContentWithProviders extends TMDBMovie, TMDBShow {
+interface ContentWithProviders {
+  id: number;
+  title?: string;
+  name?: string;
+  overview: string;
+  release_date?: string;
+  first_air_date?: string;
+  vote_average: number;
+  poster_path: string | null;
+  genre_ids: number[];
+  original_language: string;
+  popularity: number;
+  backdrop_path: string | null;
+  adult?: boolean;
+  origin_country?: string[];
   actualProviders: string[];
 }
 
@@ -363,7 +377,8 @@ const StreamingSlotMachine = () => {
   };
 
   // Main spin button function - now much cleaner!
-  const spinButton = async () => {
+  const spinButton = useCallback(async () => {
+    console.log('Spin button clicked!');
     if (isSpinning || spinsRemaining <= 0) return;
 
     setIsSpinning(true);
@@ -454,25 +469,27 @@ const StreamingSlotMachine = () => {
       setIsSpinning(false);
       setSpinsRemaining(prev => prev + 1);
     }
-  };
+  }, [isSpinning, spinsRemaining, selectedServices, selectedContentTypes, getRandomContentType, fetchContentWithStrategies, findContentWithMatchingProviders, formatContentItem, formatProviders, getProviders, getContentDetails, genres, handleError, createError, setLoadingState]);
 
-  const toggleService = (service: string) => {
+  const toggleService = useCallback((service: string) => {
+    console.log('Toggle service clicked:', service);
     setSelectedServices(prev => {
       if (prev.includes(service)) {
         return prev.length > 1 ? prev.filter(s => s !== service) : prev;
       }
       return [...prev, service];
     });
-  };
+  }, []);
 
-  const toggleContentType = (type: 'movie' | 'tv') => {
+  const toggleContentType = useCallback((type: 'movie' | 'tv') => {
+    console.log('Toggle content type clicked:', type);
     setSelectedContentTypes(prev => {
       if (prev.includes(type)) {
         return prev.length > 1 ? prev.filter(t => t !== type) : prev;
       }
       return [...prev, type];
     });
-  };
+  }, []);
 
   // Update the getServiceColor function to add white glow for Apple TV+
   const getServiceColor = useCallback((serviceName: string): string => {
@@ -488,8 +505,14 @@ const StreamingSlotMachine = () => {
     clearError();
   }, []);
 
-  // Memoized streaming service buttons
-  const StreamingServiceButtons = memo(() => (
+  // Memoized streaming service buttons with proper props
+  const StreamingServiceButtons = memo(({ 
+    selectedServices, 
+    toggleService 
+  }: { 
+    selectedServices: string[]; 
+    toggleService: (service: string) => void; 
+  }) => (
     <div className="mb-6 sm:mb-8">
       <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
         Streaming Services
@@ -520,8 +543,14 @@ const StreamingSlotMachine = () => {
     </div>
   ));
 
-  // Memoized content type buttons
-  const ContentTypeButtons = memo(() => (
+  // Memoized content type buttons with proper props
+  const ContentTypeButtons = memo(({ 
+    selectedContentTypes, 
+    toggleContentType 
+  }: { 
+    selectedContentTypes: ('movie' | 'tv')[]; 
+    toggleContentType: (type: 'movie' | 'tv') => void; 
+  }) => (
     <div className="mb-4">
       <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
         Content Type
@@ -564,8 +593,14 @@ const StreamingSlotMachine = () => {
       
       {/* Filters Section with Card Style */}
       <div className="w-full max-w-4xl mb-6 sm:mb-10 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 sm:p-6 shadow-xl border border-gray-700">
-        <StreamingServiceButtons />
-        <ContentTypeButtons />
+        <StreamingServiceButtons 
+          selectedServices={selectedServices}
+          toggleService={toggleService}
+        />
+        <ContentTypeButtons 
+          selectedContentTypes={selectedContentTypes}
+          toggleContentType={toggleContentType}
+        />
       </div>
       
       {/* Slot Machine with enhanced styling */}
