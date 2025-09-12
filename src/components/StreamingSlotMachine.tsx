@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
+import Image from 'next/image';
+import { usePerformanceMonitor } from '@/hooks/usePerformanceMonitor';
+import PerformanceStats from './PerformanceStats';
 import { 
   getGenres, 
   getRandomContent, 
@@ -62,6 +65,8 @@ const streamingServices = [
 ];
 
 const StreamingSlotMachine = () => {
+  const { startApiTimer, endApiTimer, getMemoryUsage } = usePerformanceMonitor('StreamingSlotMachine');
+  
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [selectedContentTypes, setSelectedContentTypes] = useState<('movie' | 'tv')[]>(['movie', 'tv']);
@@ -78,20 +83,23 @@ const StreamingSlotMachine = () => {
     checkingProviders: false,
     gettingDetails: false
   });
+  const [showPerformanceStats, setShowPerformanceStats] = useState(false);
 
   useEffect(() => {
     const loadGenres = async () => {
+      startApiTimer();
       const genreList = await getGenres();
+      endApiTimer('Load Genres');
       setGenres(genreList);
       setSelectedGenres(genreList.map(genre => genre.id));
     };
     loadGenres();
-  }, []);
+  }, [startApiTimer, endApiTimer]);
 
-  const getRandomContentType = (): 'movie' | 'tv' => {
+  const getRandomContentType = useCallback((): 'movie' | 'tv' => {
     const randomIndex = Math.floor(Math.random() * selectedContentTypes.length);
     return selectedContentTypes[randomIndex];
-  };
+  }, [selectedContentTypes]);
 
   // Error handling functions
   const handleError = (error: AppError) => {
@@ -123,7 +131,7 @@ const StreamingSlotMachine = () => {
     console.log(`Loading: ${message}`);
   };
 
-  const formatProviders = (providers: any): string[] => {
+  const formatProviders = useCallback((providers: any): string[] => {
     if (!providers) return [];
     
     // Only include flatrate, free, and ads providers (subscription services)
@@ -142,7 +150,7 @@ const StreamingSlotMachine = () => {
     return uniqueProviders.filter(provider => 
       streamingServices.some(s => s.name === provider)
     );
-  };
+  }, []);
 
   // Content fetching strategies with improved error handling
   const fetchContentWithStrategies = async (contentType: 'movie' | 'tv', providerId: number): Promise<(TMDBMovie | TMDBShow)[]> => {
@@ -467,18 +475,81 @@ const StreamingSlotMachine = () => {
   };
 
   // Update the getServiceColor function to add white glow for Apple TV+
-  const getServiceColor = (serviceName: string): string => {
+  const getServiceColor = useCallback((serviceName: string): string => {
     // Normalize the service name first
     const normalizedName = normalizeProviderName(serviceName);
     
     // Find the service in our streamingServices array
     const service = streamingServices.find(s => s.name === normalizedName);
     return service ? service.color : '#777';
-  };
+  }, []);
 
-  const closeErrorModal = () => {
+  const closeErrorModal = useCallback(() => {
     clearError();
-  };
+  }, []);
+
+  // Memoized streaming service buttons
+  const StreamingServiceButtons = memo(() => (
+    <div className="mb-8">
+      <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+        Streaming Services
+      </h2>
+      <div className="flex flex-wrap gap-3">
+        {streamingServices.map(service => (
+          <button
+            key={service.name}
+            onClick={() => toggleService(service.name)}
+            className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+              selectedServices.includes(service.name) 
+                ? 'opacity-100 font-bold shadow-lg' 
+                : 'opacity-50 hover:opacity-70'
+            }`}
+            style={{ 
+              backgroundColor: selectedServices.includes(service.name) 
+                ? service.color 
+                : '#2D3748',
+              boxShadow: selectedServices.includes(service.name) 
+                ? `0 0 15px ${service.color}80` 
+                : 'none'
+            }}
+          >
+            {service.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  ));
+
+  // Memoized content type buttons
+  const ContentTypeButtons = memo(() => (
+    <div className="mb-4">
+      <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+        Content Type
+      </h2>
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => toggleContentType('movie')}
+          className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+            selectedContentTypes.includes('movie') 
+              ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
+              : 'bg-gray-700 opacity-70 hover:opacity-90'
+          }`}
+        >
+          Movies
+        </button>
+        <button
+          onClick={() => toggleContentType('tv')}
+          className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+            selectedContentTypes.includes('tv') 
+              ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
+              : 'bg-gray-700 opacity-70 hover:opacity-90'
+          }`}
+        >
+          TV Shows
+        </button>
+      </div>
+    </div>
+  ));
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white p-6">
@@ -493,64 +564,8 @@ const StreamingSlotMachine = () => {
       
       {/* Filters Section with Card Style */}
       <div className="w-full max-w-4xl mb-10 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-6 shadow-xl border border-gray-700">
-        {/* Streaming Services */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
-            Streaming Services
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            {streamingServices.map(service => (
-              <button
-                key={service.name}
-                onClick={() => toggleService(service.name)}
-                className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
-                  selectedServices.includes(service.name) 
-                    ? 'opacity-100 font-bold shadow-lg' 
-                    : 'opacity-50 hover:opacity-70'
-                }`}
-                style={{ 
-                  backgroundColor: selectedServices.includes(service.name) 
-                    ? service.color 
-                    : '#2D3748',
-                  boxShadow: selectedServices.includes(service.name) 
-                    ? `0 0 15px ${service.color}80` 
-                    : 'none'
-                }}
-              >
-                {service.name}
-              </button>
-            ))}
-          </div>
-        </div>
-        
-        {/* Content Type */}
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
-            Content Type
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => toggleContentType('movie')}
-              className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
-                selectedContentTypes.includes('movie') 
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
-                  : 'bg-gray-700 opacity-70 hover:opacity-90'
-              }`}
-            >
-              Movies
-            </button>
-            <button
-              onClick={() => toggleContentType('tv')}
-              className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
-                selectedContentTypes.includes('tv') 
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
-                  : 'bg-gray-700 opacity-70 hover:opacity-90'
-              }`}
-            >
-              TV Shows
-            </button>
-          </div>
-        </div>
+        <StreamingServiceButtons />
+        <ContentTypeButtons />
       </div>
       
       {/* Slot Machine with enhanced styling */}
@@ -580,12 +595,18 @@ const StreamingSlotMachine = () => {
                 {/* Left Column - Poster */}
                 <div className="md:w-2/5 bg-gray-900">
                   {currentContent.posterPath ? (
-                    <img
-                      src={`https://image.tmdb.org/t/p/w500${currentContent.posterPath}`}
-                      alt={currentContent.title}
-                      className="w-full h-auto object-cover rounded-tl-xl md:rounded-bl-xl"
-                      style={{ maxHeight: '600px', objectPosition: 'top' }}
-                    />
+                    <div className="relative w-full h-[600px] rounded-tl-xl md:rounded-bl-xl overflow-hidden">
+                      <Image
+                        src={`https://image.tmdb.org/t/p/w500${currentContent.posterPath}`}
+                        alt={currentContent.title}
+                        fill
+                        className="object-cover object-top"
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        priority={false}
+                        placeholder="blur"
+                        blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                      />
+                    </div>
                   ) : (
                     <div className="w-full h-full min-h-[400px] bg-gray-900 flex items-center justify-center rounded-tl-xl md:rounded-bl-xl">
                       <span className="text-gray-500">No image available</span>
@@ -747,6 +768,19 @@ const StreamingSlotMachine = () => {
           </div>
         </div>
       )}
+
+      {/* Performance Stats Toggle (Development Only) */}
+      {process.env.NODE_ENV === 'development' && (
+        <button
+          onClick={() => setShowPerformanceStats(!showPerformanceStats)}
+          className="fixed top-4 right-4 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-full p-2 text-xs text-gray-400 hover:text-white transition-colors z-50"
+          title="Toggle Performance Stats"
+        >
+          ⚡
+        </button>
+      )}
+
+      <PerformanceStats isVisible={showPerformanceStats} />
     </div>
   );
 };
