@@ -23,12 +23,12 @@ const PerformanceStats: React.FC<PerformanceStatsProps> = ({ isVisible }) => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 bg-gray-800 bg-opacity-90 backdrop-blur-sm rounded-lg p-3 text-xs text-gray-300 border border-gray-600 z-50">
-      <div className="font-semibold text-green-400 mb-2">Performance Stats</div>
+    <div className="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 bg-gray-800 bg-opacity-90 backdrop-blur-sm rounded-lg p-2 sm:p-3 text-xs text-gray-300 border border-gray-600 z-50 max-w-xs">
+      <div className="font-semibold text-green-400 mb-1 sm:mb-2 text-xs sm:text-sm">Performance Stats</div>
       <div className="space-y-1">
-        <div>Cache Entries: <span className="text-blue-400">{stats.totalEntries}</span></div>
-        <div>Expired: <span className="text-red-400">{stats.expiredEntries}</span></div>
-        <div>Memory: <span className="text-yellow-400">{stats.memoryUsage} bytes</span></div>
+        <div className="text-xs">Cache Entries: <span className="text-blue-400">{stats.totalEntries}</span></div>
+        <div className="text-xs">Expired: <span className="text-red-400">{stats.expiredEntries}</span></div>
+        <div className="text-xs">Memory: <span className="text-yellow-400">{stats.memoryUsage} bytes</span></div>
       </div>
     </div>
   );

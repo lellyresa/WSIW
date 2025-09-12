@@ -490,16 +490,16 @@ const StreamingSlotMachine = () => {
 
   // Memoized streaming service buttons
   const StreamingServiceButtons = memo(() => (
-    <div className="mb-8">
-      <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+    <div className="mb-6 sm:mb-8">
+      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
         Streaming Services
       </h2>
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2 sm:gap-3">
         {streamingServices.map(service => (
           <button
             key={service.name}
             onClick={() => toggleService(service.name)}
-            className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+            className={`px-3 py-2 sm:px-5 sm:py-2 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base ${
               selectedServices.includes(service.name) 
                 ? 'opacity-100 font-bold shadow-lg' 
                 : 'opacity-50 hover:opacity-70'
@@ -523,13 +523,13 @@ const StreamingSlotMachine = () => {
   // Memoized content type buttons
   const ContentTypeButtons = memo(() => (
     <div className="mb-4">
-      <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
         Content Type
       </h2>
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2 sm:gap-3">
         <button
           onClick={() => toggleContentType('movie')}
-          className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+          className={`px-4 py-2 sm:px-5 sm:py-2 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base ${
             selectedContentTypes.includes('movie') 
               ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
               : 'bg-gray-700 opacity-70 hover:opacity-90'
@@ -539,7 +539,7 @@ const StreamingSlotMachine = () => {
         </button>
         <button
           onClick={() => toggleContentType('tv')}
-          className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+          className={`px-4 py-2 sm:px-5 sm:py-2 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base ${
             selectedContentTypes.includes('tv') 
               ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
               : 'bg-gray-700 opacity-70 hover:opacity-90'
@@ -552,37 +552,37 @@ const StreamingSlotMachine = () => {
   ));
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white p-6">
+    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white px-4 py-6 sm:p-6">
       {/* Header with glow effect */}
-      <div className="text-center mb-10 relative">
-        <h1 className="text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
+      <div className="text-center mb-6 sm:mb-10 relative">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
           What Should I Watch?
         </h1>
         <div className="absolute -inset-1 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 rounded-lg blur opacity-20 -z-10"></div>
-        <p className="text-xl text-gray-300">We pick, you binge. Easy.</p>
+        <p className="text-lg sm:text-xl text-gray-300">We pick, you binge. Easy.</p>
       </div>
       
       {/* Filters Section with Card Style */}
-      <div className="w-full max-w-4xl mb-10 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-6 shadow-xl border border-gray-700">
+      <div className="w-full max-w-4xl mb-6 sm:mb-10 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 sm:p-6 shadow-xl border border-gray-700">
         <StreamingServiceButtons />
         <ContentTypeButtons />
       </div>
       
       {/* Slot Machine with enhanced styling */}
-      <div className="relative w-full max-w-2xl bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl p-8 flex flex-col items-center shadow-2xl border border-gray-700">
+      <div className="relative w-full max-w-2xl bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl p-4 sm:p-6 md:p-8 flex flex-col items-center shadow-2xl border border-gray-700">
         {/* Result Display */}
-        <div className="w-full bg-gray-900 rounded-xl mb-8 overflow-hidden shadow-inner">
+        <div className="w-full bg-gray-900 rounded-xl mb-6 sm:mb-8 overflow-hidden shadow-inner">
           {isSpinning ? (
-            <div className="h-96 flex items-center justify-center">
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-                <div className="text-2xl text-purple-400 animate-pulse mb-2">
+            <div className="h-64 sm:h-80 md:h-96 flex items-center justify-center">
+              <div className="flex flex-col items-center px-4">
+                <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+                <div className="text-lg sm:text-xl md:text-2xl text-purple-400 animate-pulse mb-2 text-center">
                   {loadingStates.fetchingContent && "Searching for content..."}
                   {loadingStates.checkingProviders && "Checking streaming availability..."}
                   {loadingStates.gettingDetails && "Getting content details..."}
                   {!loadingStates.fetchingContent && !loadingStates.checkingProviders && !loadingStates.gettingDetails && "Finding something amazing..."}
                 </div>
-                <div className="text-sm text-gray-400">
+                <div className="text-xs sm:text-sm text-gray-400 text-center">
                   {loadingStates.fetchingContent && "This may take a moment..."}
                   {loadingStates.checkingProviders && "Verifying where you can watch..."}
                   {loadingStates.gettingDetails && "Gathering additional info..."}
@@ -593,9 +593,9 @@ const StreamingSlotMachine = () => {
             <div className="w-full">
               <div className="flex flex-col md:flex-row">
                 {/* Left Column - Poster */}
-                <div className="md:w-2/5 bg-gray-900">
+                <div className="w-full md:w-2/5 bg-gray-900">
                   {currentContent.posterPath ? (
-                    <div className="relative w-full h-[600px] rounded-tl-xl md:rounded-bl-xl overflow-hidden">
+                    <div className="relative w-full h-64 sm:h-80 md:h-[600px] rounded-tl-xl md:rounded-bl-xl overflow-hidden">
                       <Image
                         src={`https://image.tmdb.org/t/p/w500${currentContent.posterPath}`}
                         alt={currentContent.title}
@@ -608,33 +608,33 @@ const StreamingSlotMachine = () => {
                       />
                     </div>
                   ) : (
-                    <div className="w-full h-full min-h-[400px] bg-gray-900 flex items-center justify-center rounded-tl-xl md:rounded-bl-xl">
-                      <span className="text-gray-500">No image available</span>
+                    <div className="w-full h-64 sm:h-80 md:h-[600px] bg-gray-900 flex items-center justify-center rounded-tl-xl md:rounded-bl-xl">
+                      <span className="text-gray-500 text-sm sm:text-base">No image available</span>
                     </div>
                   )}
                 </div>
                 
                 {/* Right Column - Content Details */}
-                <div className="md:w-3/5 p-6 bg-gray-900">
-                  <h1 className="text-3xl font-bold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300">
+                <div className="w-full md:w-3/5 p-4 sm:p-6 bg-gray-900">
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300">
                     {currentContent.title}
                   </h1>
                   
                   <div className="flex flex-wrap gap-2 mb-4">
-                    <span className="px-3 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full text-sm font-medium">
+                    <span className="px-2 py-1 sm:px-3 sm:py-1 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full text-xs sm:text-sm font-medium">
                       {currentContent.type === 'tv' ? 'TV Show' : 'Movie'}
                     </span>
-                    <span className="px-3 py-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full text-sm font-medium">
+                    <span className="px-2 py-1 sm:px-3 sm:py-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full text-xs sm:text-sm font-medium">
                       {currentContent.genre}
                     </span>
                     {currentContent.rating && (
-                      <span className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-amber-600 rounded-full text-sm font-medium">
+                      <span className="px-2 py-1 sm:px-3 sm:py-1 bg-gradient-to-r from-yellow-600 to-amber-600 rounded-full text-xs sm:text-sm font-medium">
                         {currentContent.rating}
                       </span>
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-y-2 text-gray-300 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 text-gray-300 mb-4 text-sm sm:text-base">
                     {currentContent.releaseDate && (
                       <div className="flex items-center">
                         <span className="mr-2">📅</span>
@@ -660,16 +660,16 @@ const StreamingSlotMachine = () => {
                   </div>
                   
                   {currentContent.providers.length > 0 && (
-                    <div className="mb-6">
-                      <p className="text-sm text-gray-400 mb-2">Available on:</p>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="mb-4 sm:mb-6">
+                      <p className="text-xs sm:text-sm text-gray-400 mb-2">Available on:</p>
+                      <div className="flex flex-wrap gap-1 sm:gap-2">
                         {currentContent.providers.map(provider => {
                           const serviceColor = getServiceColor(provider);
                           const isAppleTV = provider === 'Apple TV+';
                           return (
                             <span 
                               key={provider} 
-                              className="px-3 py-1 rounded-full text-sm font-medium"
+                              className="px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-medium"
                               style={{ 
                                 backgroundColor: serviceColor,
                                 boxShadow: isAppleTV 
@@ -688,8 +688,8 @@ const StreamingSlotMachine = () => {
               </div>
               
               {/* Synopsis */}
-              <div className="p-6 pt-4 bg-gray-900 border-t border-gray-700 rounded-b-xl">
-                <p className="text-gray-300 leading-relaxed">{currentContent.overview || "No description available."}</p>
+              <div className="p-4 sm:p-6 pt-4 bg-gray-900 border-t border-gray-700 rounded-b-xl">
+                <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{currentContent.overview || "No description available."}</p>
               </div>
             </div>
           ) : (
@@ -705,9 +705,9 @@ const StreamingSlotMachine = () => {
         <button
           onClick={spinButton}
           disabled={isSpinning || spinsRemaining <= 0}
-          className={`w-48 h-48 rounded-full shadow-lg 
+          className={`w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full shadow-lg 
                      flex items-center justify-center transform transition-all duration-300
-                     ${(isSpinning || spinsRemaining <= 0) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
+                     ${(isSpinning || spinsRemaining <= 0) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
           style={{ 
             background: 'linear-gradient(135deg, #ff4d4d 0%, #f9333f 100%)',
             boxShadow: '0 0 30px rgba(255, 77, 77, 0.7), 0 0 60px rgba(255, 77, 77, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.3)',
@@ -715,39 +715,39 @@ const StreamingSlotMachine = () => {
           }}
         >
           <div className="flex flex-col items-center">
-            <span className="text-6xl font-extrabold text-white mb-1 drop-shadow-lg" style={{ fontFamily: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' }}>SPIN</span>
-            <span className="text-sm text-white opacity-90" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>Find your next binge!</span>
+            <span className="text-3xl sm:text-4xl md:text-6xl font-extrabold text-white mb-1 drop-shadow-lg" style={{ fontFamily: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' }}>SPIN</span>
+            <span className="text-xs sm:text-sm text-white opacity-90 text-center px-2" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>Find your next binge!</span>
           </div>
         </button>
 
         {/* Spins Counter with enhanced styling */}
-        <div className="mt-6 text-gray-300">
+        <div className="mt-4 sm:mt-6 text-gray-300">
           {spinsRemaining > 0 ? (
-            <div className="flex items-center">
+            <div className="flex items-center justify-center">
               <div className="flex space-x-1">
                 {[...Array(spinsRemaining)].map((_, i) => (
-                  <div key={i} className="w-3 h-3 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: `${i * 200}ms` }}></div>
+                  <div key={i} className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: `${i * 200}ms` }}></div>
                 ))}
               </div>
-              <span className="ml-3 font-medium">{spinsRemaining} spin{spinsRemaining !== 1 ? 's' : ''} remaining</span>
+              <span className="ml-2 sm:ml-3 font-medium text-sm sm:text-base">{spinsRemaining} spin{spinsRemaining !== 1 ? 's' : ''} remaining</span>
             </div>
           ) : (
-            <span className="text-red-500 font-bold">No more spins left!</span>
+            <span className="text-red-500 font-bold text-sm sm:text-base">No more spins left!</span>
           )}
         </div>
       </div>
 
       {/* Error Modal with enhanced styling */}
       {showErrorModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 max-w-md border border-gray-700 shadow-2xl transform transition-all animate-fadeIn">
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl p-4 sm:p-6 max-w-md w-full border border-gray-700 shadow-2xl transform transition-all animate-fadeIn">
             <div className="mb-4 text-center">
-              <svg className="w-12 h-12 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-10 h-10 sm:w-12 sm:h-12 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-gray-200 text-lg mb-2">{errorMessage}</p>
+              <p className="text-gray-200 text-base sm:text-lg mb-2">{errorMessage}</p>
               {currentError?.details && (
-                <p className="text-gray-400 text-sm">
+                <p className="text-gray-400 text-xs sm:text-sm">
                   <strong>Details:</strong> {currentError.details}
                 </p>
               )}
@@ -760,7 +760,7 @@ const StreamingSlotMachine = () => {
             <div className="flex justify-center">
               <button 
                 onClick={closeErrorModal}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105"
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base"
               >
                 Close
               </button>
@@ -773,7 +773,7 @@ const StreamingSlotMachine = () => {
       {process.env.NODE_ENV === 'development' && (
         <button
           onClick={() => setShowPerformanceStats(!showPerformanceStats)}
-          className="fixed top-4 right-4 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-full p-2 text-xs text-gray-400 hover:text-white transition-colors z-50"
+          className="fixed top-2 right-2 sm:top-4 sm:right-4 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-full p-2 text-xs text-gray-400 hover:text-white transition-colors z-50"
           title="Toggle Performance Stats"
         >
           ⚡
