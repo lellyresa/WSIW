@@ -1,7 +1,5 @@
-import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { usePerformanceMonitor } from '@/hooks/usePerformanceMonitor';
-import PerformanceStats from './PerformanceStats';
 import { 
   getGenres, 
   getRandomContent, 
@@ -36,6 +34,7 @@ interface ContentItem {
 
 // Add a new interface for content with actual providers
 interface ContentWithProviders {
+  actualProviders: string[];
   id: number;
   title?: string;
   name?: string;
@@ -50,7 +49,6 @@ interface ContentWithProviders {
   backdrop_path: string | null;
   adult?: boolean;
   origin_country?: string[];
-  actualProviders: string[];
 }
 
 // Error types for better error handling
@@ -79,8 +77,6 @@ const streamingServices = [
 ];
 
 const StreamingSlotMachine = () => {
-  const { startApiTimer, endApiTimer, getMemoryUsage } = usePerformanceMonitor('StreamingSlotMachine');
-  
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [selectedContentTypes, setSelectedContentTypes] = useState<('movie' | 'tv')[]>(['movie', 'tv']);
@@ -97,23 +93,20 @@ const StreamingSlotMachine = () => {
     checkingProviders: false,
     gettingDetails: false
   });
-  const [showPerformanceStats, setShowPerformanceStats] = useState(false);
 
   useEffect(() => {
     const loadGenres = async () => {
-      startApiTimer();
       const genreList = await getGenres();
-      endApiTimer('Load Genres');
       setGenres(genreList);
       setSelectedGenres(genreList.map(genre => genre.id));
     };
     loadGenres();
-  }, [startApiTimer, endApiTimer]);
+  }, []);
 
-  const getRandomContentType = useCallback((): 'movie' | 'tv' => {
+  const getRandomContentType = (): 'movie' | 'tv' => {
     const randomIndex = Math.floor(Math.random() * selectedContentTypes.length);
     return selectedContentTypes[randomIndex];
-  }, [selectedContentTypes]);
+  };
 
   // Error handling functions
   const handleError = (error: AppError) => {
@@ -137,7 +130,7 @@ const StreamingSlotMachine = () => {
 
   // Loading state management
   const setLoadingState = (key: keyof typeof loadingStates, value: boolean) => {
-    setLoadingStates(prev => ({ ...prev, [key]: value }));
+    setLoadingStates((prev: typeof loadingStates) => ({ ...prev, [key]: value }));
   };
 
   const updateLoadingMessage = (message: string) => {
@@ -145,7 +138,7 @@ const StreamingSlotMachine = () => {
     console.log(`Loading: ${message}`);
   };
 
-  const formatProviders = useCallback((providers: any): string[] => {
+  const formatProviders = (providers: any): string[] => {
     if (!providers) return [];
     
     // Only include flatrate, free, and ads providers (subscription services)
@@ -164,7 +157,7 @@ const StreamingSlotMachine = () => {
     return uniqueProviders.filter(provider => 
       streamingServices.some(s => s.name === provider)
     );
-  }, []);
+  };
 
   // Content fetching strategies with improved error handling
   const fetchContentWithStrategies = async (contentType: 'movie' | 'tv', providerId: number): Promise<(TMDBMovie | TMDBShow)[]> => {
@@ -355,7 +348,7 @@ const StreamingSlotMachine = () => {
   const formatContentItem = async (content: TMDBMovie | TMDBShow, providers: string[]): Promise<ContentItem> => {
     const isMovie = 'title' in content;
     const genreName = content.genre_ids && content.genre_ids.length > 0
-      ? genres.find(g => content.genre_ids.includes(g.id))?.name || 'Unknown'
+      ? genres.find((g: Genre) => content.genre_ids.includes(g.id))?.name || 'Unknown'
       : 'Unknown';
 
     const details = await getContentDetails(content);
@@ -377,13 +370,12 @@ const StreamingSlotMachine = () => {
   };
 
   // Main spin button function - now much cleaner!
-  const spinButton = useCallback(async () => {
-    console.log('Spin button clicked!');
+  const spinButton = async () => {
     if (isSpinning || spinsRemaining <= 0) return;
 
     setIsSpinning(true);
     setButtonScale(0.9);
-    setSpinsRemaining(prev => prev - 1);
+      setSpinsRemaining((prev: number) => prev - 1);
     setTimeout(() => setButtonScale(1), 200);
 
     try {
@@ -402,12 +394,12 @@ const StreamingSlotMachine = () => {
       // Get random content type and provider
       const contentType = getRandomContentType();
       const selectedProviderIds = servicesToUse
-        .map(service => providerMap[service])
-        .filter(id => id !== undefined);
+        .map((service: string) => providerMap[service])
+        .filter((id: number | undefined) => id !== undefined);
       
       if (selectedProviderIds.length === 0) {
         console.log("No valid provider IDs found, using all providers");
-        selectedProviderIds.push(...Object.values(providerMap).filter(id => id !== undefined));
+        selectedProviderIds.push(...Object.values(providerMap).filter((id: number | undefined) => id !== undefined));
       }
       
       const randomProviderIndex = Math.floor(Math.random() * selectedProviderIds.length);
@@ -425,8 +417,9 @@ const StreamingSlotMachine = () => {
       if (contentWithProviders.length > 0) {
         // Use content with matching providers
         const randomIndex = Math.floor(Math.random() * contentWithProviders.length);
-        selectedContent = contentWithProviders[randomIndex];
-        finalProviders = (selectedContent as ContentWithProviders).actualProviders;
+        const selectedContentWithProviders = contentWithProviders[randomIndex];
+        selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
+        finalProviders = selectedContentWithProviders.actualProviders;
       } else {
         // Fallback to any content with actual providers
         const randomIndex = Math.floor(Math.random() * allContent.length);
@@ -467,157 +460,130 @@ const StreamingSlotMachine = () => {
       }
       
       setIsSpinning(false);
-      setSpinsRemaining(prev => prev + 1);
+      setSpinsRemaining((prev: number) => prev + 1);
     }
-  }, [isSpinning, spinsRemaining, selectedServices, selectedContentTypes, getRandomContentType, fetchContentWithStrategies, findContentWithMatchingProviders, formatContentItem, formatProviders, getProviders, getContentDetails, genres, handleError, createError, setLoadingState]);
+  };
 
-  const toggleService = useCallback((service: string) => {
-    console.log('Toggle service clicked:', service);
-    setSelectedServices(prev => {
+  const toggleService = (service: string) => {
+    setSelectedServices((prev: string[]) => {
       if (prev.includes(service)) {
-        return prev.length > 1 ? prev.filter(s => s !== service) : prev;
+        return prev.length > 1 ? prev.filter((s: string) => s !== service) : prev;
       }
       return [...prev, service];
     });
-  }, []);
+  };
 
-  const toggleContentType = useCallback((type: 'movie' | 'tv') => {
-    console.log('Toggle content type clicked:', type);
-    setSelectedContentTypes(prev => {
+  const toggleContentType = (type: 'movie' | 'tv') => {
+    setSelectedContentTypes((prev: ('movie' | 'tv')[]) => {
       if (prev.includes(type)) {
-        return prev.length > 1 ? prev.filter(t => t !== type) : prev;
+        return prev.length > 1 ? prev.filter((t: 'movie' | 'tv') => t !== type) : prev;
       }
       return [...prev, type];
     });
-  }, []);
+  };
 
   // Update the getServiceColor function to add white glow for Apple TV+
-  const getServiceColor = useCallback((serviceName: string): string => {
+  const getServiceColor = (serviceName: string): string => {
     // Normalize the service name first
     const normalizedName = normalizeProviderName(serviceName);
     
     // Find the service in our streamingServices array
     const service = streamingServices.find(s => s.name === normalizedName);
     return service ? service.color : '#777';
-  }, []);
+  };
 
-  const closeErrorModal = useCallback(() => {
+  const closeErrorModal = () => {
     clearError();
-  }, []);
-
-  // Memoized streaming service buttons with proper props
-  const StreamingServiceButtons = memo(({ 
-    selectedServices, 
-    toggleService 
-  }: { 
-    selectedServices: string[]; 
-    toggleService: (service: string) => void; 
-  }) => (
-    <div className="mb-6 sm:mb-8">
-      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
-        Streaming Services
-      </h2>
-      <div className="flex flex-wrap gap-2 sm:gap-3">
-        {streamingServices.map(service => (
-          <button
-            key={service.name}
-            onClick={() => toggleService(service.name)}
-            className={`px-3 py-2 sm:px-5 sm:py-2 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base ${
-              selectedServices.includes(service.name) 
-                ? 'opacity-100 font-bold shadow-lg' 
-                : 'opacity-50 hover:opacity-70'
-            }`}
-            style={{ 
-              backgroundColor: selectedServices.includes(service.name) 
-                ? service.color 
-                : '#2D3748',
-              boxShadow: selectedServices.includes(service.name) 
-                ? `0 0 15px ${service.color}80` 
-                : 'none'
-            }}
-          >
-            {service.name}
-          </button>
-        ))}
-      </div>
-    </div>
-  ));
-
-  // Memoized content type buttons with proper props
-  const ContentTypeButtons = memo(({ 
-    selectedContentTypes, 
-    toggleContentType 
-  }: { 
-    selectedContentTypes: ('movie' | 'tv')[]; 
-    toggleContentType: (type: 'movie' | 'tv') => void; 
-  }) => (
-    <div className="mb-4">
-      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
-        Content Type
-      </h2>
-      <div className="flex flex-wrap gap-2 sm:gap-3">
-        <button
-          onClick={() => toggleContentType('movie')}
-          className={`px-4 py-2 sm:px-5 sm:py-2 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base ${
-            selectedContentTypes.includes('movie') 
-              ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
-              : 'bg-gray-700 opacity-70 hover:opacity-90'
-          }`}
-        >
-          Movies
-        </button>
-        <button
-          onClick={() => toggleContentType('tv')}
-          className={`px-4 py-2 sm:px-5 sm:py-2 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base ${
-            selectedContentTypes.includes('tv') 
-              ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
-              : 'bg-gray-700 opacity-70 hover:opacity-90'
-          }`}
-        >
-          TV Shows
-        </button>
-      </div>
-    </div>
-  ));
+  };
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white px-4 py-6 sm:p-6">
+    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white p-6">
       {/* Header with glow effect */}
-      <div className="text-center mb-6 sm:mb-10 relative">
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
+      <div className="text-center mb-10 relative">
+        <h1 className="text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
           What Should I Watch?
         </h1>
         <div className="absolute -inset-1 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 rounded-lg blur opacity-20 -z-10"></div>
-        <p className="text-lg sm:text-xl text-gray-300">We pick, you binge. Easy.</p>
+        <p className="text-xl text-gray-300">We pick, you binge. Easy.</p>
       </div>
       
       {/* Filters Section with Card Style */}
-      <div className="w-full max-w-4xl mb-6 sm:mb-10 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 sm:p-6 shadow-xl border border-gray-700">
-        <StreamingServiceButtons 
-          selectedServices={selectedServices}
-          toggleService={toggleService}
-        />
-        <ContentTypeButtons 
-          selectedContentTypes={selectedContentTypes}
-          toggleContentType={toggleContentType}
-        />
+      <div className="w-full max-w-4xl mb-10 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-6 shadow-xl border border-gray-700">
+        {/* Streaming Services */}
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+            Streaming Services
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {streamingServices.map(service => (
+              <button
+                key={service.name}
+                onClick={() => toggleService(service.name)}
+                className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+                  selectedServices.includes(service.name) 
+                    ? 'opacity-100 font-bold shadow-lg' 
+                    : 'opacity-50 hover:opacity-70'
+                }`}
+                style={{ 
+                  backgroundColor: selectedServices.includes(service.name) 
+                    ? service.color 
+                    : '#2D3748',
+                  boxShadow: selectedServices.includes(service.name) 
+                    ? `0 0 15px ${service.color}80` 
+                    : 'none'
+                }}
+              >
+                {service.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        {/* Content Type */}
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+            Content Type
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => toggleContentType('movie')}
+              className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+                selectedContentTypes.includes('movie') 
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
+                  : 'bg-gray-700 opacity-70 hover:opacity-90'
+              }`}
+            >
+              Movies
+            </button>
+            <button
+              onClick={() => toggleContentType('tv')}
+              className={`px-5 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+                selectedContentTypes.includes('tv') 
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 opacity-100 shadow-lg' 
+                  : 'bg-gray-700 opacity-70 hover:opacity-90'
+              }`}
+            >
+              TV Shows
+            </button>
+          </div>
+        </div>
       </div>
       
       {/* Slot Machine with enhanced styling */}
-      <div className="relative w-full max-w-2xl bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl p-4 sm:p-6 md:p-8 flex flex-col items-center shadow-2xl border border-gray-700">
+      <div className="relative w-full max-w-2xl bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl p-8 flex flex-col items-center shadow-2xl border border-gray-700">
         {/* Result Display */}
-        <div className="w-full bg-gray-900 rounded-xl mb-6 sm:mb-8 overflow-hidden shadow-inner">
+        <div className="w-full bg-gray-900 rounded-xl mb-8 overflow-hidden shadow-inner">
           {isSpinning ? (
-            <div className="h-64 sm:h-80 md:h-96 flex items-center justify-center">
-              <div className="flex flex-col items-center px-4">
-                <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-                <div className="text-lg sm:text-xl md:text-2xl text-purple-400 animate-pulse mb-2 text-center">
+            <div className="h-96 flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+                <div className="text-2xl text-purple-400 animate-pulse mb-2">
                   {loadingStates.fetchingContent && "Searching for content..."}
                   {loadingStates.checkingProviders && "Checking streaming availability..."}
                   {loadingStates.gettingDetails && "Getting content details..."}
                   {!loadingStates.fetchingContent && !loadingStates.checkingProviders && !loadingStates.gettingDetails && "Finding something amazing..."}
                 </div>
-                <div className="text-xs sm:text-sm text-gray-400 text-center">
+                <div className="text-sm text-gray-400">
                   {loadingStates.fetchingContent && "This may take a moment..."}
                   {loadingStates.checkingProviders && "Verifying where you can watch..."}
                   {loadingStates.gettingDetails && "Gathering additional info..."}
@@ -628,48 +594,47 @@ const StreamingSlotMachine = () => {
             <div className="w-full">
               <div className="flex flex-col md:flex-row">
                 {/* Left Column - Poster */}
-                <div className="w-full md:w-2/5 bg-gray-900">
+                <div className="md:w-2/5 bg-gray-900">
                   {currentContent.posterPath ? (
-                    <div className="relative w-full h-64 sm:h-80 md:h-[600px] rounded-tl-xl md:rounded-bl-xl overflow-hidden">
-                      <Image
-                        src={`https://image.tmdb.org/t/p/w500${currentContent.posterPath}`}
-                        alt={currentContent.title}
-                        fill
-                        className="object-cover object-top"
-                        sizes="(max-width: 768px) 100vw, 50vw"
-                        priority={false}
-                        placeholder="blur"
-                        blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
-                      />
-                    </div>
+                    <Image
+                      src={`https://image.tmdb.org/t/p/w500${currentContent.posterPath}`}
+                      alt={currentContent.title}
+                      width={500}
+                      height={750}
+                      className="w-full h-auto object-cover rounded-tl-xl md:rounded-bl-xl"
+                      style={{ maxHeight: '600px', objectPosition: 'top' }}
+                      priority={false}
+                      placeholder="blur"
+                      blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                    />
                   ) : (
-                    <div className="w-full h-64 sm:h-80 md:h-[600px] bg-gray-900 flex items-center justify-center rounded-tl-xl md:rounded-bl-xl">
-                      <span className="text-gray-500 text-sm sm:text-base">No image available</span>
+                    <div className="w-full h-full min-h-[400px] bg-gray-900 flex items-center justify-center rounded-tl-xl md:rounded-bl-xl">
+                      <span className="text-gray-500">No image available</span>
                     </div>
                   )}
                 </div>
                 
                 {/* Right Column - Content Details */}
-                <div className="w-full md:w-3/5 p-4 sm:p-6 bg-gray-900">
-                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300">
+                <div className="md:w-3/5 p-6 bg-gray-900">
+                  <h1 className="text-3xl font-bold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300">
                     {currentContent.title}
                   </h1>
                   
                   <div className="flex flex-wrap gap-2 mb-4">
-                    <span className="px-2 py-1 sm:px-3 sm:py-1 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full text-xs sm:text-sm font-medium">
+                    <span className="px-3 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full text-sm font-medium">
                       {currentContent.type === 'tv' ? 'TV Show' : 'Movie'}
                     </span>
-                    <span className="px-2 py-1 sm:px-3 sm:py-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full text-xs sm:text-sm font-medium">
+                    <span className="px-3 py-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full text-sm font-medium">
                       {currentContent.genre}
                     </span>
                     {currentContent.rating && (
-                      <span className="px-2 py-1 sm:px-3 sm:py-1 bg-gradient-to-r from-yellow-600 to-amber-600 rounded-full text-xs sm:text-sm font-medium">
+                      <span className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-amber-600 rounded-full text-sm font-medium">
                         {currentContent.rating}
                       </span>
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 text-gray-300 mb-4 text-sm sm:text-base">
+                  <div className="grid grid-cols-2 gap-y-2 text-gray-300 mb-4">
                     {currentContent.releaseDate && (
                       <div className="flex items-center">
                         <span className="mr-2">📅</span>
@@ -695,16 +660,16 @@ const StreamingSlotMachine = () => {
                   </div>
                   
                   {currentContent.providers.length > 0 && (
-                    <div className="mb-4 sm:mb-6">
-                      <p className="text-xs sm:text-sm text-gray-400 mb-2">Available on:</p>
-                      <div className="flex flex-wrap gap-1 sm:gap-2">
-                        {currentContent.providers.map(provider => {
+                    <div className="mb-6">
+                      <p className="text-sm text-gray-400 mb-2">Available on:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {currentContent.providers.map((provider: string) => {
                           const serviceColor = getServiceColor(provider);
                           const isAppleTV = provider === 'Apple TV+';
                           return (
                             <span 
                               key={provider} 
-                              className="px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-medium"
+                              className="px-3 py-1 rounded-full text-sm font-medium"
                               style={{ 
                                 backgroundColor: serviceColor,
                                 boxShadow: isAppleTV 
@@ -723,8 +688,8 @@ const StreamingSlotMachine = () => {
               </div>
               
               {/* Synopsis */}
-              <div className="p-4 sm:p-6 pt-4 bg-gray-900 border-t border-gray-700 rounded-b-xl">
-                <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{currentContent.overview || "No description available."}</p>
+              <div className="p-6 pt-4 bg-gray-900 border-t border-gray-700 rounded-b-xl">
+                <p className="text-gray-300 leading-relaxed">{currentContent.overview || "No description available."}</p>
               </div>
             </div>
           ) : (
@@ -740,9 +705,9 @@ const StreamingSlotMachine = () => {
         <button
           onClick={spinButton}
           disabled={isSpinning || spinsRemaining <= 0}
-          className={`w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full shadow-lg 
+          className={`w-48 h-48 rounded-full shadow-lg 
                      flex items-center justify-center transform transition-all duration-300
-                     ${(isSpinning || spinsRemaining <= 0) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
+                     ${(isSpinning || spinsRemaining <= 0) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
           style={{ 
             background: 'linear-gradient(135deg, #ff4d4d 0%, #f9333f 100%)',
             boxShadow: '0 0 30px rgba(255, 77, 77, 0.7), 0 0 60px rgba(255, 77, 77, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.3)',
@@ -750,39 +715,39 @@ const StreamingSlotMachine = () => {
           }}
         >
           <div className="flex flex-col items-center">
-            <span className="text-3xl sm:text-4xl md:text-6xl font-extrabold text-white mb-1 drop-shadow-lg" style={{ fontFamily: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' }}>SPIN</span>
-            <span className="text-xs sm:text-sm text-white opacity-90 text-center px-2" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>Find your next binge!</span>
+            <span className="text-6xl font-extrabold text-white mb-1 drop-shadow-lg" style={{ fontFamily: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' }}>SPIN</span>
+            <span className="text-sm text-white opacity-90" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>Find your next binge!</span>
           </div>
         </button>
 
         {/* Spins Counter with enhanced styling */}
-        <div className="mt-4 sm:mt-6 text-gray-300">
+        <div className="mt-6 text-gray-300">
           {spinsRemaining > 0 ? (
-            <div className="flex items-center justify-center">
+            <div className="flex items-center">
               <div className="flex space-x-1">
                 {[...Array(spinsRemaining)].map((_, i) => (
-                  <div key={i} className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: `${i * 200}ms` }}></div>
+                  <div key={i} className="w-3 h-3 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: `${i * 200}ms` }}></div>
                 ))}
               </div>
-              <span className="ml-2 sm:ml-3 font-medium text-sm sm:text-base">{spinsRemaining} spin{spinsRemaining !== 1 ? 's' : ''} remaining</span>
+              <span className="ml-3 font-medium">{spinsRemaining} spin{spinsRemaining !== 1 ? 's' : ''} remaining</span>
             </div>
           ) : (
-            <span className="text-red-500 font-bold text-sm sm:text-base">No more spins left!</span>
+            <span className="text-red-500 font-bold">No more spins left!</span>
           )}
         </div>
       </div>
 
       {/* Error Modal with enhanced styling */}
       {showErrorModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl p-4 sm:p-6 max-w-md w-full border border-gray-700 shadow-2xl transform transition-all animate-fadeIn">
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md border border-gray-700 shadow-2xl transform transition-all animate-fadeIn">
             <div className="mb-4 text-center">
-              <svg className="w-10 h-10 sm:w-12 sm:h-12 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-12 h-12 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-gray-200 text-base sm:text-lg mb-2">{errorMessage}</p>
+              <p className="text-gray-200 text-lg mb-2">{errorMessage}</p>
               {currentError?.details && (
-                <p className="text-gray-400 text-xs sm:text-sm">
+                <p className="text-gray-400 text-sm">
                   <strong>Details:</strong> {currentError.details}
                 </p>
               )}
@@ -795,7 +760,7 @@ const StreamingSlotMachine = () => {
             <div className="flex justify-center">
               <button 
                 onClick={closeErrorModal}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base"
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105"
               >
                 Close
               </button>
@@ -803,19 +768,6 @@ const StreamingSlotMachine = () => {
           </div>
         </div>
       )}
-
-      {/* Performance Stats Toggle (Development Only) */}
-      {process.env.NODE_ENV === 'development' && (
-        <button
-          onClick={() => setShowPerformanceStats(!showPerformanceStats)}
-          className="fixed top-2 right-2 sm:top-4 sm:right-4 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-full p-2 text-xs text-gray-400 hover:text-white transition-colors z-50"
-          title="Toggle Performance Stats"
-        >
-          ⚡
-        </button>
-      )}
-
-      <PerformanceStats isVisible={showPerformanceStats} />
     </div>
   );
 };

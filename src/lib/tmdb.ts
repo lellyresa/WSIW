@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { apiCache, generateCacheKey, CACHE_TTL } from './cache';
 
 const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
 const TMDB_ACCESS_TOKEN = process.env.NEXT_PUBLIC_TMDB_ACCESS_TOKEN;
@@ -47,13 +46,6 @@ export interface Genre {
 }
 
 export const getGenres = async (): Promise<Genre[]> => {
-  const cacheKey = generateCacheKey('/genres');
-  const cached = apiCache.get<Genre[]>(cacheKey);
-  
-  if (cached) {
-    return cached;
-  }
-
   const [movieGenres, tvGenres] = await Promise.all([
     tmdbApi.get('/genre/movie/list'),
     tmdbApi.get('/genre/tv/list'),
@@ -64,10 +56,7 @@ export const getGenres = async (): Promise<Genre[]> => {
     uniqueGenres.set(genre.id, genre);
   });
   
-  const result = Array.from(uniqueGenres.values());
-  apiCache.set(cacheKey, result, CACHE_TTL.GENRES);
-  
-  return result;
+  return Array.from(uniqueGenres.values());
 };
 
 export const getRandomContent = async (
@@ -86,18 +75,8 @@ export const getRandomContent = async (
     params.with_genres = genreId;
   }
 
-  const cacheKey = generateCacheKey(`/discover/${type}`, params);
-  const cached = apiCache.get<TMDBMovie[] | TMDBShow[]>(cacheKey);
-  
-  if (cached) {
-    return cached;
-  }
-
   const response = await tmdbApi.get(`/discover/${type}`, { params });
-  const result = response.data.results;
-  
-  apiCache.set(cacheKey, result, CACHE_TTL.CONTENT);
-  return result;
+  return response.data.results;
 };
 
 // Map provider names to TMDB provider IDs
@@ -140,23 +119,13 @@ export const getContentByProvider = async (
 
 // Enhanced provider fetching with better error handling
 export const getProviders = async (type: 'movie' | 'tv', id: number) => {
-  const cacheKey = generateCacheKey(`/${type}/${id}/watch/providers`);
-  const cached = apiCache.get(cacheKey);
-  
-  if (cached) {
-    return cached;
-  }
-
   try {
     const response = await tmdbApi.get(`/${type}/${id}/watch/providers`);
     // Check if we have US results
-    let result = null;
     if (response.data.results && response.data.results.US) {
-      result = response.data.results.US;
+      return response.data.results.US;
     }
-    
-    apiCache.set(cacheKey, result, CACHE_TTL.PROVIDERS);
-    return result;
+    return null;
   } catch (error) {
     console.error('Error fetching providers:', error);
     return null;
