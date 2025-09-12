@@ -9,9 +9,6 @@ import {
   getContentByProviderAndGenre,
   getPopularByProvider,
   getTrendingContent,
-  cacheUtils
-} from '@/lib/cached-tmdb';
-import { 
   providerMap, 
   providerIdToName,
   normalizeProviderName,
@@ -96,8 +93,13 @@ const StreamingSlotMachine = () => {
     checkingProviders: false,
     gettingDetails: false
   });
-  const [cacheStats, setCacheStats] = useState({ memoryItems: 0, localStorageItems: 0 });
-  const [showCacheStats, setShowCacheStats] = useState(false);
+  
+  const [loadingProgress, setLoadingProgress] = useState({
+    currentStep: 0,
+    totalSteps: 4,
+    stepName: '',
+    progress: 0
+  });
 
   useEffect(() => {
     const loadGenres = async () => {
@@ -106,9 +108,6 @@ const StreamingSlotMachine = () => {
       setSelectedGenres(genreList.map(genre => genre.id));
     };
     loadGenres();
-    
-    // Update cache stats
-    setCacheStats(cacheUtils.getStats());
   }, []);
 
   const getRandomContentType = (): 'movie' | 'tv' => {
@@ -136,29 +135,32 @@ const StreamingSlotMachine = () => {
     details
   });
 
-  // Loading state management
+  // Enhanced loading state management
   const setLoadingState = (key: keyof typeof loadingStates, value: boolean) => {
     setLoadingStates((prev: typeof loadingStates) => ({ ...prev, [key]: value }));
   };
 
+  const updateLoadingProgress = (step: number, stepName: string) => {
+    const progress = (step / loadingProgress.totalSteps) * 100;
+    setLoadingProgress({
+      currentStep: step,
+      totalSteps: loadingProgress.totalSteps,
+      stepName,
+      progress: Math.round(progress)
+    });
+  };
+
+  const resetLoadingProgress = () => {
+    setLoadingProgress({
+      currentStep: 0,
+      totalSteps: 4,
+      stepName: '',
+      progress: 0
+    });
+  };
+
   const updateLoadingMessage = (message: string) => {
-    // This could be used to show more specific loading messages
     console.log(`Loading: ${message}`);
-  };
-
-  // Cache management functions
-  const updateCacheStats = () => {
-    setCacheStats(cacheUtils.getStats());
-  };
-
-  const clearCache = () => {
-    cacheUtils.clearAll();
-    updateCacheStats();
-  };
-
-  const clearExpiredCache = () => {
-    cacheUtils.clearExpired();
-    updateCacheStats();
   };
 
   const formatProviders = (providers: any): string[] => {
@@ -185,93 +187,94 @@ const StreamingSlotMachine = () => {
   // Content fetching strategies with improved error handling
   const fetchContentWithStrategies = async (contentType: 'movie' | 'tv', providerId: number): Promise<(TMDBMovie | TMDBShow)[]> => {
     setLoadingState('fetchingContent', true);
+    updateLoadingProgress(1, 'Searching for content...');
     updateLoadingMessage('Searching for content...');
     
-    let allContent: (TMDBMovie | TMDBShow)[] = [];
+      let allContent: (TMDBMovie | TMDBShow)[] = [];
     let lastError: Error | null = null;
-    
-    // Strategy 1: Try with provider and content type
+      
+      // Strategy 1: Try with provider and content type
     for (let attempt = 0; attempt < 3 && allContent.length < 20; attempt++) {
       try {
         const page = Math.floor(Math.random() * 5) + 1;
         console.log(`Strategy 1: Provider ${providerId}, type ${contentType}, page ${page}`);
-        const newContent = await getContentByProvider(contentType, providerId, page);
-        
-        for (const item of newContent) {
-          if (!allContent.some(c => c.id === item.id)) {
-            allContent.push(item);
+          const newContent = await getContentByProvider(contentType, providerId, page);
+          
+          for (const item of newContent) {
+            if (!allContent.some(c => c.id === item.id)) {
+              allContent.push(item);
+            }
           }
-        }
-      } catch (error) {
+        } catch (error) {
         lastError = error as Error;
         console.error(`Strategy 1 error:`, error);
-      }
-    }
-    
-    // Strategy 2: Try alternate content type if we have multiple types selected
-    if (allContent.length < 10 && selectedContentTypes.length > 1) {
-      const alternateType = contentType === 'movie' ? 'tv' : 'movie';
-      try {
-        console.log(`Strategy 2: Alternate type ${alternateType} with provider ${providerId}`);
-        const newContent = await getContentByProvider(alternateType, providerId, 1);
-        
-        for (const item of newContent) {
-          if (!allContent.some(c => c.id === item.id)) {
-            allContent.push(item);
-          }
         }
-      } catch (error) {
+      }
+      
+    // Strategy 2: Try alternate content type if we have multiple types selected
+      if (allContent.length < 10 && selectedContentTypes.length > 1) {
+        const alternateType = contentType === 'movie' ? 'tv' : 'movie';
+        try {
+        console.log(`Strategy 2: Alternate type ${alternateType} with provider ${providerId}`);
+          const newContent = await getContentByProvider(alternateType, providerId, 1);
+          
+          for (const item of newContent) {
+            if (!allContent.some(c => c.id === item.id)) {
+              allContent.push(item);
+            }
+          }
+        } catch (error) {
         lastError = error as Error;
         console.error(`Strategy 2 error:`, error);
-      }
-    }
-    
-    // Strategy 3: Try popular content for this provider
-    if (allContent.length < 5) {
-      try {
-        console.log(`Strategy 3: Popular content for provider ${providerId}`);
-        const popularContent = await getPopularByProvider(providerId, 1);
-        
-        for (const item of popularContent) {
-          if (!allContent.some(c => c.id === item.id)) {
-            allContent.push(item);
-          }
         }
-      } catch (error) {
+      }
+      
+      // Strategy 3: Try popular content for this provider
+      if (allContent.length < 5) {
+        try {
+        console.log(`Strategy 3: Popular content for provider ${providerId}`);
+          const popularContent = await getPopularByProvider(providerId, 1);
+          
+          for (const item of popularContent) {
+            if (!allContent.some(c => c.id === item.id)) {
+              allContent.push(item);
+            }
+          }
+        } catch (error) {
         lastError = error as Error;
         console.error(`Strategy 3 error:`, error);
-      }
-    }
-    
-    // Strategy 4: Try random content without provider filtering
-    if (allContent.length < 5) {
-      try {
-        console.log(`Strategy 4: Random content without provider filtering`);
-        const randomContent = await getRandomContent(contentType, undefined, 1);
-        
-        for (const item of randomContent) {
-          if (!allContent.some(c => c.id === item.id)) {
-            allContent.push(item);
-          }
         }
-      } catch (error) {
+      }
+      
+      // Strategy 4: Try random content without provider filtering
+      if (allContent.length < 5) {
+        try {
+        console.log(`Strategy 4: Random content without provider filtering`);
+          const randomContent = await getRandomContent(contentType, undefined, 1);
+          
+          for (const item of randomContent) {
+            if (!allContent.some(c => c.id === item.id)) {
+              allContent.push(item);
+            }
+          }
+        } catch (error) {
         lastError = error as Error;
         console.error(`Strategy 4 error:`, error);
-      }
-    }
-    
-    // Strategy 5: Last resort - get trending content
-    if (allContent.length < 5) {
-      try {
-        console.log(`Strategy 5: Trending content (last resort)`);
-        const trendingContent = await getTrendingContent(1);
-        
-        for (const item of trendingContent) {
-          if (!allContent.some(c => c.id === item.id)) {
-            allContent.push(item);
-          }
         }
-      } catch (error) {
+      }
+      
+      // Strategy 5: Last resort - get trending content
+      if (allContent.length < 5) {
+        try {
+        console.log(`Strategy 5: Trending content (last resort)`);
+          const trendingContent = await getTrendingContent(1);
+          
+          for (const item of trendingContent) {
+            if (!allContent.some(c => c.id === item.id)) {
+              allContent.push(item);
+            }
+          }
+        } catch (error) {
         lastError = error as Error;
         console.error(`Strategy 5 error:`, error);
       }
@@ -294,35 +297,36 @@ const StreamingSlotMachine = () => {
   // Process content to find items with matching providers
   const findContentWithMatchingProviders = async (allContent: (TMDBMovie | TMDBShow)[]): Promise<ContentWithProviders[]> => {
     setLoadingState('checkingProviders', true);
+    updateLoadingProgress(2, 'Checking streaming availability...');
     updateLoadingMessage('Checking streaming availability...');
     
     const contentWithProviders: ContentWithProviders[] = [];
     
-    for (let i = 0; i < Math.min(allContent.length, 20) && contentWithProviders.length < 5; i++) {
-      const item = allContent[i];
-      
-      try {
-        const providers = await getProviders(
-          'title' in item ? 'movie' : 'tv', 
-          item.id
-        );
+      for (let i = 0; i < Math.min(allContent.length, 20) && contentWithProviders.length < 5; i++) {
+        const item = allContent[i];
         
-        const availableProviders = formatProviders(providers);
-        const matchingProviders = availableProviders.filter(provider => 
-          selectedServices.includes(provider)
-        );
-        
-        if (matchingProviders.length > 0) {
-          contentWithProviders.push({
-            ...item,
-            actualProviders: matchingProviders
-          });
+        try {
+          const providers = await getProviders(
+            'title' in item ? 'movie' : 'tv', 
+            item.id
+          );
+          
+          const availableProviders = formatProviders(providers);
+          const matchingProviders = availableProviders.filter(provider => 
+            selectedServices.includes(provider)
+          );
+          
+          if (matchingProviders.length > 0) {
+            contentWithProviders.push({
+              ...item,
+              actualProviders: matchingProviders
+            });
+          }
+        } catch (error) {
+          console.error('Error checking providers:', error);
         }
-      } catch (error) {
-        console.error('Error checking providers:', error);
       }
-    }
-    
+      
     setLoadingState('checkingProviders', false);
     return contentWithProviders;
   };
@@ -334,6 +338,7 @@ const StreamingSlotMachine = () => {
     rating: string | null;
   }> => {
     setLoadingState('gettingDetails', true);
+    updateLoadingProgress(3, 'Getting content details...');
     updateLoadingMessage('Getting content details...');
     
     const isMovie = 'title' in content;
@@ -347,18 +352,18 @@ const StreamingSlotMachine = () => {
         const movieDetails = await fetch(
           `https://api.themoviedb.org/3/movie/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
         ).then(res => res.json());
-        runtime = movieDetails.runtime;
-      } else {
+            runtime = movieDetails.runtime;
+        } else {
         const tvDetails = await fetch(
           `https://api.themoviedb.org/3/tv/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
         ).then(res => res.json());
-        numberOfSeasons = tvDetails.number_of_seasons;
-        runtime = tvDetails.episode_run_time?.[0];
-      }
-
-      // Get content rating
+            numberOfSeasons = tvDetails.number_of_seasons;
+            runtime = tvDetails.episode_run_time?.[0];
+        }
+        
+        // Get content rating
       rating = await getContentRating(isMovie ? 'movie' : 'tv', content.id);
-    } catch (error) {
+        } catch (error) {
       console.error('Error fetching content details:', error);
     } finally {
       setLoadingState('gettingDetails', false);
@@ -380,7 +385,7 @@ const StreamingSlotMachine = () => {
       id: content.id,
       title: isMovie ? content.title || 'Unknown Title' : content.name || 'Unknown Title',
       type: isMovie ? 'movie' : 'tv',
-      genre: genreName,
+          genre: genreName,
       rating: details.rating,
       providers,
       posterPath: content.poster_path,
@@ -398,7 +403,8 @@ const StreamingSlotMachine = () => {
 
     setIsSpinning(true);
     setButtonScale(0.9);
-      setSpinsRemaining((prev: number) => prev - 1);
+    setSpinsRemaining((prev: number) => prev - 1);
+    resetLoadingProgress();
     setTimeout(() => setButtonScale(1), 200);
 
     try {
@@ -443,7 +449,7 @@ const StreamingSlotMachine = () => {
         const selectedContentWithProviders = contentWithProviders[randomIndex];
         selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
         finalProviders = selectedContentWithProviders.actualProviders;
-      } else {
+        } else {
         // Fallback to any content with actual providers
         const randomIndex = Math.floor(Math.random() * allContent.length);
         selectedContent = allContent[randomIndex];
@@ -461,15 +467,14 @@ const StreamingSlotMachine = () => {
       }
       
       // Format and display the content
+      updateLoadingProgress(4, 'Finalizing recommendation...');
       const formattedContent = await formatContentItem(selectedContent, finalProviders);
-      
-      // Update cache stats after API calls
-      updateCacheStats();
-      
-      setTimeout(() => {
-        setCurrentContent(formattedContent);
-        setIsSpinning(false);
-      }, 1500);
+        
+        setTimeout(() => {
+          setCurrentContent(formattedContent);
+          setIsSpinning(false);
+        resetLoadingProgress();
+        }, 1500);
       
     } catch (error) {
       console.error('Error fetching content:', error);
@@ -530,15 +535,7 @@ const StreamingSlotMachine = () => {
           What Should I Watch?
         </h1>
         <div className="absolute -inset-1 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 rounded-lg blur opacity-20 -z-10"></div>
-        <p className="text-xl text-gray-300 mb-4">We pick, you binge. Easy.</p>
-        
-        {/* Cache Stats Toggle */}
-        <button
-          onClick={() => setShowCacheStats(!showCacheStats)}
-          className="text-sm text-gray-400 hover:text-gray-300 transition-colors duration-200"
-        >
-          📊 Cache: {cacheStats.memoryItems + cacheStats.localStorageItems} items
-        </button>
+        <p className="text-xl text-gray-300">We pick, you binge. Easy.</p>
       </div>
       
       {/* Filters Section with Card Style */}
@@ -609,18 +606,47 @@ const StreamingSlotMachine = () => {
         <div className="w-full bg-gray-900 rounded-xl mb-8 overflow-hidden shadow-inner">
           {isSpinning ? (
             <div className="h-96 flex items-center justify-center">
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-                <div className="text-2xl text-purple-400 animate-pulse mb-2">
-                  {loadingStates.fetchingContent && "Searching for content..."}
-                  {loadingStates.checkingProviders && "Checking streaming availability..."}
-                  {loadingStates.gettingDetails && "Getting content details..."}
-                  {!loadingStates.fetchingContent && !loadingStates.checkingProviders && !loadingStates.gettingDetails && "Finding something amazing..."}
+              <div className="flex flex-col items-center w-full max-w-md">
+                {/* Animated Spinner */}
+                <div className="relative mb-6">
+                  <div className="animate-spin rounded-full h-20 w-20 border-t-4 border-b-4 border-purple-500"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-8 h-8 bg-purple-500 rounded-full animate-pulse"></div>
+                  </div>
                 </div>
-                <div className="text-sm text-gray-400">
-                  {loadingStates.fetchingContent && "This may take a moment..."}
-                  {loadingStates.checkingProviders && "Verifying where you can watch..."}
-                  {loadingStates.gettingDetails && "Gathering additional info..."}
+                
+                {/* Progress Bar */}
+                <div className="w-full mb-4">
+                  <div className="flex justify-between text-sm text-gray-400 mb-2">
+                    <span>Step {loadingProgress.currentStep} of {loadingProgress.totalSteps}</span>
+                    <span>{loadingProgress.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${loadingProgress.progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {/* Loading Message */}
+                <div className="text-2xl text-purple-400 animate-pulse mb-2 text-center">
+                  {loadingProgress.stepName || "Finding something amazing..."}
+                </div>
+                
+                {/* Sub-message */}
+                <div className="text-sm text-gray-400 text-center">
+                  {loadingStates.fetchingContent && "Searching through thousands of titles..."}
+                  {loadingStates.checkingProviders && "Verifying streaming availability..."}
+                  {loadingStates.gettingDetails && "Gathering additional details..."}
+                  {loadingProgress.currentStep === 4 && "Almost ready..."}
+                </div>
+                
+                {/* Loading Dots Animation */}
+                <div className="flex space-x-1 mt-4">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
             </div>
@@ -743,14 +769,32 @@ const StreamingSlotMachine = () => {
                      flex items-center justify-center transform transition-all duration-300
                      ${(isSpinning || spinsRemaining <= 0) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
           style={{ 
-            background: 'linear-gradient(135deg, #ff4d4d 0%, #f9333f 100%)',
-            boxShadow: '0 0 30px rgba(255, 77, 77, 0.7), 0 0 60px rgba(255, 77, 77, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.3)',
+            background: isSpinning 
+              ? 'linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%)' 
+              : 'linear-gradient(135deg, #ff4d4d 0%, #f9333f 100%)',
+            boxShadow: isSpinning 
+              ? '0 0 30px rgba(139, 92, 246, 0.7), 0 0 60px rgba(139, 92, 246, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.3)'
+              : '0 0 30px rgba(255, 77, 77, 0.7), 0 0 60px rgba(255, 77, 77, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.3)',
             transform: `scale(${buttonScale})`,
           }}
         >
           <div className="flex flex-col items-center">
+            {isSpinning ? (
+              <>
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-2"></div>
+                <span className="text-lg font-bold text-white drop-shadow-lg" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>
+                  {loadingProgress.stepName || 'Searching...'}
+                </span>
+                <span className="text-xs text-white opacity-90 mt-1" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>
+                  {loadingProgress.progress}% complete
+                </span>
+              </>
+            ) : (
+              <>
             <span className="text-6xl font-extrabold text-white mb-1 drop-shadow-lg" style={{ fontFamily: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif' }}>SPIN</span>
             <span className="text-sm text-white opacity-90" style={{ fontFamily: 'Verdana, Geneva, sans-serif' }}>Find your next binge!</span>
+              </>
+            )}
           </div>
         </button>
 
@@ -770,53 +814,6 @@ const StreamingSlotMachine = () => {
           )}
         </div>
       </div>
-
-      {/* Cache Stats Modal */}
-      {showCacheStats && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 max-w-md border border-gray-700 shadow-2xl transform transition-all animate-fadeIn">
-            <div className="mb-4 text-center">
-              <h3 className="text-xl font-bold text-white mb-4">📊 Cache Statistics</h3>
-              <div className="space-y-2 text-gray-300">
-                <div className="flex justify-between">
-                  <span>Memory Cache:</span>
-                  <span className="text-green-400">{cacheStats.memoryItems} items</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Local Storage:</span>
-                  <span className="text-blue-400">{cacheStats.localStorageItems} items</span>
-                </div>
-                <div className="flex justify-between border-t border-gray-600 pt-2">
-                  <span className="font-semibold">Total:</span>
-                  <span className="text-purple-400 font-semibold">
-                    {cacheStats.memoryItems + cacheStats.localStorageItems} items
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col space-y-2">
-              <button 
-                onClick={clearExpiredCache}
-                className="px-4 py-2 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-full hover:from-yellow-700 hover:to-orange-700 transition-all duration-300 transform hover:scale-105"
-              >
-                🧹 Clear Expired
-              </button>
-              <button 
-                onClick={clearCache}
-                className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-full hover:from-red-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105"
-              >
-                🗑️ Clear All Cache
-              </button>
-              <button 
-                onClick={() => setShowCacheStats(false)}
-                className="px-4 py-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-full hover:from-gray-700 hover:to-gray-800 transition-all duration-300 transform hover:scale-105"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Error Modal with enhanced styling */}
       {showErrorModal && (
