@@ -9,6 +9,9 @@ import {
   getContentByProviderAndGenre,
   getPopularByProvider,
   getTrendingContent,
+  cacheUtils
+} from '@/lib/cached-tmdb';
+import { 
   providerMap, 
   providerIdToName,
   normalizeProviderName,
@@ -93,6 +96,8 @@ const StreamingSlotMachine = () => {
     checkingProviders: false,
     gettingDetails: false
   });
+  const [cacheStats, setCacheStats] = useState({ memoryItems: 0, localStorageItems: 0 });
+  const [showCacheStats, setShowCacheStats] = useState(false);
 
   useEffect(() => {
     const loadGenres = async () => {
@@ -101,6 +106,9 @@ const StreamingSlotMachine = () => {
       setSelectedGenres(genreList.map(genre => genre.id));
     };
     loadGenres();
+    
+    // Update cache stats
+    setCacheStats(cacheUtils.getStats());
   }, []);
 
   const getRandomContentType = (): 'movie' | 'tv' => {
@@ -136,6 +144,21 @@ const StreamingSlotMachine = () => {
   const updateLoadingMessage = (message: string) => {
     // This could be used to show more specific loading messages
     console.log(`Loading: ${message}`);
+  };
+
+  // Cache management functions
+  const updateCacheStats = () => {
+    setCacheStats(cacheUtils.getStats());
+  };
+
+  const clearCache = () => {
+    cacheUtils.clearAll();
+    updateCacheStats();
+  };
+
+  const clearExpiredCache = () => {
+    cacheUtils.clearExpired();
+    updateCacheStats();
   };
 
   const formatProviders = (providers: any): string[] => {
@@ -440,6 +463,9 @@ const StreamingSlotMachine = () => {
       // Format and display the content
       const formattedContent = await formatContentItem(selectedContent, finalProviders);
       
+      // Update cache stats after API calls
+      updateCacheStats();
+      
       setTimeout(() => {
         setCurrentContent(formattedContent);
         setIsSpinning(false);
@@ -504,7 +530,15 @@ const StreamingSlotMachine = () => {
           What Should I Watch?
         </h1>
         <div className="absolute -inset-1 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 rounded-lg blur opacity-20 -z-10"></div>
-        <p className="text-xl text-gray-300">We pick, you binge. Easy.</p>
+        <p className="text-xl text-gray-300 mb-4">We pick, you binge. Easy.</p>
+        
+        {/* Cache Stats Toggle */}
+        <button
+          onClick={() => setShowCacheStats(!showCacheStats)}
+          className="text-sm text-gray-400 hover:text-gray-300 transition-colors duration-200"
+        >
+          📊 Cache: {cacheStats.memoryItems + cacheStats.localStorageItems} items
+        </button>
       </div>
       
       {/* Filters Section with Card Style */}
@@ -736,6 +770,53 @@ const StreamingSlotMachine = () => {
           )}
         </div>
       </div>
+
+      {/* Cache Stats Modal */}
+      {showCacheStats && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md border border-gray-700 shadow-2xl transform transition-all animate-fadeIn">
+            <div className="mb-4 text-center">
+              <h3 className="text-xl font-bold text-white mb-4">📊 Cache Statistics</h3>
+              <div className="space-y-2 text-gray-300">
+                <div className="flex justify-between">
+                  <span>Memory Cache:</span>
+                  <span className="text-green-400">{cacheStats.memoryItems} items</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Local Storage:</span>
+                  <span className="text-blue-400">{cacheStats.localStorageItems} items</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-600 pt-2">
+                  <span className="font-semibold">Total:</span>
+                  <span className="text-purple-400 font-semibold">
+                    {cacheStats.memoryItems + cacheStats.localStorageItems} items
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col space-y-2">
+              <button 
+                onClick={clearExpiredCache}
+                className="px-4 py-2 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-full hover:from-yellow-700 hover:to-orange-700 transition-all duration-300 transform hover:scale-105"
+              >
+                🧹 Clear Expired
+              </button>
+              <button 
+                onClick={clearCache}
+                className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-full hover:from-red-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105"
+              >
+                🗑️ Clear All Cache
+              </button>
+              <button 
+                onClick={() => setShowCacheStats(false)}
+                className="px-4 py-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-full hover:from-gray-700 hover:to-gray-800 transition-all duration-300 transform hover:scale-105"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Error Modal with enhanced styling */}
       {showErrorModal && (
