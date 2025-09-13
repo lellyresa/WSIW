@@ -9,12 +9,18 @@ import {
   getContentByProviderAndGenre,
   getPopularByProvider,
   getTrendingContent,
+  getCredits,
+  getKeywords,
+  getTVDetails,
   providerMap, 
   providerIdToName,
   normalizeProviderName,
   Genre, 
   TMDBMovie, 
-  TMDBShow 
+  TMDBShow,
+  CastMember,
+  CrewMember,
+  Keyword
 } from '@/lib/tmdb';
 
 interface ContentItem {
@@ -30,6 +36,11 @@ interface ContentItem {
   voteAverage: number;
   runtime?: number;
   numberOfSeasons?: number;
+  numberOfEpisodes?: number;
+  cast: string[];
+  director?: string;
+  creator?: string;
+  keywords: string[];
 }
 
 // Add a new interface for content with actual providers
@@ -87,7 +98,8 @@ const StreamingSlotMachine = () => {
   const [buttonScale, setButtonScale] = useState(1);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [suggestedItems, setSuggestedItems] = useState<ContentItem[]>([]);
+  const [suggestedItems, setSuggestedItems] = useState<(ContentItem | null)[]>([null, null, null]);
+  const [usedContentIds, setUsedContentIds] = useState<Set<number>>(new Set());
   const [currentError, setCurrentError] = useState<AppError | null>(null);
   const [loadingStates, setLoadingStates] = useState({
     fetchingContent: false,
@@ -193,7 +205,7 @@ const StreamingSlotMachine = () => {
       
       // Strategy 1: Try with provider and content type
     for (let attempt = 0; attempt < 3 && allContent.length < 20; attempt++) {
-      try {
+        try {
         const page = Math.floor(Math.random() * 5) + 1;
         console.log(`Strategy 1: Provider ${providerId}, type ${contentType}, page ${page}`);
           const newContent = await getContentByProvider(contentType, providerId, page);
@@ -373,17 +385,44 @@ const StreamingSlotMachine = () => {
   // Format content item for display
   const formatContentItem = async (content: TMDBMovie | TMDBShow, providers: string[]): Promise<ContentItem> => {
     const isMovie = 'title' in content;
+    const contentType = isMovie ? 'movie' : 'tv';
     const genreName = content.genre_ids && content.genre_ids.length > 0
       ? genres.find((g: Genre) => content.genre_ids.includes(g.id))?.name || 'Unknown'
       : 'Unknown';
 
-    const details = await getContentDetails(content);
+    // Fetch all additional data in parallel
+    const [details, credits, keywords, tvDetails] = await Promise.all([
+      getContentDetails(content),
+      getCredits(contentType, content.id),
+      getKeywords(contentType, content.id),
+      !isMovie ? getTVDetails(content.id) : Promise.resolve(null)
+    ]);
+
+    // Extract cast names (top 3)
+    const cast = credits.cast.map((actor: CastMember) => actor.name);
+
+    // Find director (for movies) or creator (for TV shows)
+    let director: string | undefined;
+    let creator: string | undefined;
+    
+    if (isMovie) {
+      const directorCrew = credits.crew.find((person: CrewMember) => person.job === 'Director');
+      director = directorCrew?.name;
+      } else {
+      // For TV shows, use created_by from TV details
+      if (tvDetails?.created_by && tvDetails.created_by.length > 0) {
+        creator = tvDetails.created_by[0].name;
+      }
+    }
+
+    // Extract keyword names
+    const keywordNames = keywords.map((keyword: Keyword) => keyword.name);
 
     return {
       id: content.id,
       title: isMovie ? content.title || 'Unknown Title' : content.name || 'Unknown Title',
-      type: isMovie ? 'movie' : 'tv',
-          genre: genreName,
+      type: contentType,
+      genre: genreName,
       rating: details.rating,
       providers,
       posterPath: content.poster_path,
@@ -391,7 +430,12 @@ const StreamingSlotMachine = () => {
       releaseDate: isMovie ? content.release_date || 'Unknown Date' : content.first_air_date || 'Unknown Date',
       voteAverage: content.vote_average || 0,
       runtime: details.runtime,
-      numberOfSeasons: details.numberOfSeasons
+      numberOfSeasons: details.numberOfSeasons,
+      numberOfEpisodes: tvDetails?.number_of_episodes,
+      cast,
+      director,
+      creator,
+      keywords: keywordNames
     };
   };
 
@@ -461,15 +505,38 @@ const StreamingSlotMachine = () => {
       let finalProviders: string[];
       
       if (contentWithProviders.length > 0) {
-        // Use content with matching providers
-        const randomIndex = Math.floor(Math.random() * contentWithProviders.length);
-        const selectedContentWithProviders = contentWithProviders[randomIndex];
-        selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
-        finalProviders = selectedContentWithProviders.actualProviders;
+        // Filter out already used content
+        const availableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
+        
+        if (availableContent.length > 0) {
+          // Use content with matching providers that hasn't been used
+          const randomIndex = Math.floor(Math.random() * availableContent.length);
+          const selectedContentWithProviders = availableContent[randomIndex];
+          selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
+          finalProviders = selectedContentWithProviders.actualProviders;
         } else {
-        // Fallback to any content with actual providers
-        const randomIndex = Math.floor(Math.random() * allContent.length);
-        selectedContent = allContent[randomIndex];
+          // If all content has been used, reset and use any content
+          console.log("All content with providers has been used, resetting...");
+          setUsedContentIds(new Set());
+          const randomIndex = Math.floor(Math.random() * contentWithProviders.length);
+          const selectedContentWithProviders = contentWithProviders[randomIndex];
+          selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
+          finalProviders = selectedContentWithProviders.actualProviders;
+        }
+        } else {
+        // Filter out already used content from fallback
+        const availableContent = allContent.filter(item => !usedContentIds.has(item.id));
+        
+        if (availableContent.length > 0) {
+          const randomIndex = Math.floor(Math.random() * availableContent.length);
+          selectedContent = availableContent[randomIndex];
+        } else {
+          // If all content has been used, reset and use any content
+          console.log("All fallback content has been used, resetting...");
+          setUsedContentIds(new Set());
+          const randomIndex = Math.floor(Math.random() * allContent.length);
+          selectedContent = allContent[randomIndex];
+        }
         
         try {
           const providers = await getProviders(
@@ -485,13 +552,37 @@ const StreamingSlotMachine = () => {
       
       // Format and display the content
       updateLoadingProgress('Finalizing recommendation...');
+      console.log("Selected content ID:", selectedContent.id, "Title:", 'title' in selectedContent ? selectedContent.title : selectedContent.name);
+      console.log("Content type:", 'title' in selectedContent ? 'movie' : 'tv');
+      console.log("All content length:", allContent.length);
+      console.log("Content with providers length:", contentWithProviders.length);
+      
       const formattedContent = await formatContentItem(selectedContent, finalProviders);
+      
+      // Add the selected content ID to used set
+      setUsedContentIds((prev: Set<number>) => new Set([...prev, selectedContent.id]));
         
         setTimeout(() => {
           setCurrentContent(formattedContent);
-          setSuggestedItems(prev => {
-            const updated = [formattedContent, ...prev.filter(i => i.id !== formattedContent.id)];
-            return updated.slice(0, 3);
+          setSuggestedItems((prev: (ContentItem | null)[]) => {
+            // Find the first empty slot (null) and place the new item there
+            const newItems = [...prev];
+            const firstEmptyIndex = newItems.findIndex(item => item === null || item === undefined);
+            
+            if (firstEmptyIndex !== -1 && firstEmptyIndex < 3) {
+              // Place in the first available empty slot
+              newItems[firstEmptyIndex] = formattedContent;
+            } else if (newItems.length < 3) {
+              // If array is shorter than 3, add to the end
+              newItems.push(formattedContent);
+            }
+            
+            // Ensure we always have exactly 3 slots (fill with null if needed)
+            while (newItems.length < 3) {
+              newItems.push(null);
+            }
+            
+            return newItems.slice(0, 3);
           });
           setIsSpinning(false);
           resetLoadingProgress();
@@ -555,7 +646,7 @@ const StreamingSlotMachine = () => {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.15),transparent_60%)]"></div>
         <div className="relative max-w-7xl mx-auto px-6 py-14">
           <div className="text-center">
-            <h1 className="text-6xl md:text-7xl font-black mb-3 bg-gradient-to-r from-white via-slate-200 to-slate-300 bg-clip-text text-transparent tracking-tight">
+            <h1 className="text-5xl md:text-6xl font-semibold mb-3 bg-gradient-to-r from-white via-blue-100 to-purple-200 bg-clip-text text-transparent tracking-tight">
           What Should I Watch?
         </h1>
             <p className="text-xl md:text-2xl text-gray-300 font-light">Stop scrolling. Start watching.</p>
@@ -566,8 +657,8 @@ const StreamingSlotMachine = () => {
       {/* Modern Filters Section */}
       <div className="max-w-6xl mx-auto px-6 -mt-10 relative z-10">
         <div className="grid grid-cols-12 gap-6">
-          {/* Streaming Services Card */}
-          <div className="col-span-12 md:col-span-6 bg-white/7.5 backdrop-blur-xl rounded-2xl p-7 border border-white/10 shadow-2xl">
+           {/* Streaming Services Card */}
+           <div className="col-span-12 md:col-span-6 bg-slate-800/60 backdrop-blur-xl rounded-2xl pt-7 px-7 pb-[10px] border border-purple-400/40 shadow-2xl shadow-black/20">
             <div className="flex items-center mb-6">
               <div className="w-2 h-8 bg-gradient-to-b from-indigo-400 to-sky-400 rounded-full mr-4"></div>
               <h2 className="text-2xl font-bold text-white tracking-tight">Where ya watchin</h2>
@@ -583,7 +674,7 @@ const StreamingSlotMachine = () => {
                     ? 'text-white'
                     : 'border-white/20 text-white/60 hover:text-white/80'
                 }`}
-                style={{
+                style={{ 
                   borderColor: selectedServices.includes(service.name) 
                     ? (service.name === 'Apple TV+' ? '#ffffff' : service.color) 
                     : 'rgba(255,255,255,0.2)',
@@ -593,7 +684,7 @@ const StreamingSlotMachine = () => {
                 }}
               >
                 <span className="text-sm font-semibold">
-                  {service.name}
+                {service.name}
                 </span>
               </button>
             ))}
@@ -601,7 +692,7 @@ const StreamingSlotMachine = () => {
 
           {/* Content Type Section - compact version */}
           <div>
-            <div className="flex items-center mb-6">
+            <div className="flex items-center mb-6 mt-10">
               <div className="w-2 h-8 bg-gradient-to-b from-indigo-400 to-sky-400 rounded-full mr-4"></div>
               <h2 className="text-2xl font-bold text-white tracking-tight">Whatcha watchin</h2>
         </div>
@@ -609,61 +700,55 @@ const StreamingSlotMachine = () => {
             <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={() => toggleContentType('movie')}
-                className={`group relative p-3 rounded-xl overflow-hidden transition-all duration-200 ${
+                className={`group relative px-4 py-3 rounded-full transition-all duration-200 border text-center ${
                 selectedContentTypes.includes('movie') 
-                    ? 'bg-white/10 border border-white/20 scale-[1.02]' 
-                    : 'bg-white/4 border border-white/10 hover:bg-white/8'
+                    ? 'text-white'
+                    : 'border-white/20 text-white/60 hover:text-white/80'
                 }`}
+                style={{
+                  borderColor: selectedContentTypes.includes('movie') ? '#6366F1' : 'rgba(255,255,255,0.2)',
+                  backgroundColor: selectedContentTypes.includes('movie') 
+                    ? 'rgba(99, 102, 241, 0.15)' 
+                    : 'rgba(0,0,0,0.2)'
+                }}
               >
-                <div className="flex items-center space-x-2">
-                  <div className="text-lg">🎬</div>
-                  <span className="text-sm font-semibold text-white">Movies</span>
-                </div>
-                {/* Bottom accent bar to signal selection */}
-                <div
-                  className="absolute inset-x-0 bottom-0 h-[3px] transition-opacity duration-200"
-                  style={{
-                    backgroundColor: '#6366F1',
-                    opacity: selectedContentTypes.includes('movie') ? 1 : 0
-                  }}
-                ></div>
+                <span className="text-sm font-semibold">
+                  🎬 Movies
+                </span>
             </button>
             <button
               onClick={() => toggleContentType('tv')}
-                className={`group relative p-3 rounded-xl overflow-hidden transition-all duration-200 ${
+                className={`group relative px-4 py-3 rounded-full transition-all duration-200 border text-center ${
                 selectedContentTypes.includes('tv') 
-                    ? 'bg-white/10 border border-white/20 scale-[1.02]' 
-                    : 'bg-white/4 border border-white/10 hover:bg-white/8'
+                    ? 'text-white'
+                    : 'border-white/20 text-white/60 hover:text-white/80'
                 }`}
+                style={{
+                  borderColor: selectedContentTypes.includes('tv') ? '#06B6D4' : 'rgba(255,255,255,0.2)',
+                  backgroundColor: selectedContentTypes.includes('tv') 
+                    ? 'rgba(6, 182, 212, 0.15)' 
+                    : 'rgba(0,0,0,0.2)'
+                }}
               >
-                <div className="flex items-center space-x-2">
-                  <div className="text-lg">📺</div>
-                  <span className="text-sm font-semibold text-white">TV Shows</span>
-                </div>
-                {/* Bottom accent bar to signal selection */}
-                <div
-                  className="absolute inset-x-0 bottom-0 h-[3px] transition-opacity duration-200"
-                  style={{
-                    backgroundColor: '#06B6D4',
-                    opacity: selectedContentTypes.includes('tv') ? 1 : 0
-                  }}
-                ></div>
+                <span className="text-sm font-semibold">
+                  📺 TV Shows
+                </span>
             </button>
-            </div>
           </div>
         </div>
-        
-        {/* Our Picks Card - always visible with placeholders */}
-        <div className="col-span-12 md:col-span-6 bg-white/7.5 backdrop-blur-xl rounded-2xl p-7 border border-white/10 shadow-2xl">
+      </div>
+      
+         {/* Our Picks Card - always visible with placeholders */}
+         <div className="col-span-12 md:col-span-6 bg-slate-800/60 backdrop-blur-xl rounded-2xl pt-7 px-7 pb-[10px] border border-purple-400/40 shadow-2xl shadow-black/20">
           <div className="flex items-center mb-6">
             <div className="w-2 h-8 bg-gradient-to-b from-indigo-400 to-sky-400 rounded-full mr-4"></div>
             <h2 className="text-2xl font-bold text-white tracking-tight">What to watch</h2>
-          </div>
+              </div>
           <div className="grid grid-cols-3 gap-3 mb-6">
             {[0, 1, 2].map(index => {
               const item = suggestedItems[index];
               return (
-                <div key={index} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden flex flex-col h-80">
+                <div key={index} className="bg-slate-700/50 border border-slate-600/40 rounded-xl overflow-hidden flex flex-col h-80">
                   {item ? (
                     <>
                       {item.posterPath ? (
@@ -673,8 +758,8 @@ const StreamingSlotMachine = () => {
                           width={300}
                           height={450}
                           className="w-full h-auto flex-1 object-cover"
-                        />
-                      ) : (
+                    />
+                  ) : (
                         <div className="w-full bg-gray-700 flex-1"></div>
                       )}
                       <div className="p-2.5 flex-shrink-0">
@@ -682,7 +767,7 @@ const StreamingSlotMachine = () => {
                         {/* Streaming service dots */}
                         <div className="flex gap-1.5 mt-1">
                           {item.providers && item.providers.length > 0 ? (
-                            item.providers.map((provider, providerIndex) => {
+                            item.providers.map((provider: string, providerIndex: number) => {
                               // Find the matching service from our streamingServices array
                               const service = streamingServices.find(s => s.name === provider);
                               const serviceColor = service ? service.color : '#777777';
@@ -707,15 +792,15 @@ const StreamingSlotMachine = () => {
                       </div>
                     </>
                   ) : (
-                    <div className="w-full h-full bg-white/3 border-2 border-dashed border-white/10 flex items-center justify-center">
-                      <div className="text-white/30 text-2xl">🎬</div>
+                    <div className="w-full h-full bg-slate-800/20 border border-gray-400/30 flex items-center justify-center">
+                      <div className="text-white/20 text-2xl">🎬</div>
                     </div>
                   )}
                 </div>
               );
             })}
-          </div>
-          
+                </div>
+                
           {/* Extra spacing to match the height of the streaming services card */}
           <div className="h-8"></div>
           </div>
@@ -734,7 +819,7 @@ const StreamingSlotMachine = () => {
           }`}
           style={{ transform: `scale(${buttonScale})` }}
         >
-          <span className="relative z-10 flex items-center space-x-3">
+          <span className="relative z-10 flex items-center justify-center space-x-3">
             {isSpinning ? (
               <>
                 <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -742,13 +827,13 @@ const StreamingSlotMachine = () => {
               </>
             ) : (
               <>
-                <span>Find My Next Watch</span>
+                <span>Roll the Dice! 🎲</span>
                 <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
               </>
             )}
-          </span>
+                    </span>
           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         </button>
 
@@ -767,23 +852,23 @@ const StreamingSlotMachine = () => {
             <span className="text-red-400 text-sm font-medium">No more spins left!</span>
           )}
         </div>
-      </div>
-
+                  </div>
+                  
       {/* Modern Main Content Area */}
       <div className="max-w-6xl mx-auto px-6 mt-8">
-        <div className="bg-white/7.5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl md:ml-0">
+        <div className="bg-slate-800/60 backdrop-blur-xl rounded-3xl p-8 border border-purple-400/40 shadow-2xl shadow-black/20 md:ml-0">
         {/* Result Display */}
-          <div className="mb-8">
+          <div className="mb-8 min-h-[320px]">
           {isSpinning ? (
-              <div className="text-center py-16">
+              <div className="text-center py-8">
                 {/* Modern Loading Animation */}
                 <div className="relative mb-8">
                   <div className="w-24 h-24 mx-auto relative">
                     <div className="absolute inset-0 rounded-full border-4 border-purple-500/20"></div>
                     <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-500 animate-spin"></div>
                     <div className="absolute inset-2 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 animate-pulse"></div>
-                  </div>
-                </div>
+                      </div>
+                      </div>
                 
                 <div className="space-y-4">
                   <h3 className="text-2xl font-bold text-white">
@@ -795,8 +880,8 @@ const StreamingSlotMachine = () => {
                     {loadingStates.gettingDetails && "Gathering additional details..."}
                     {loadingProgress.currentStep === 4 && "Almost ready..."}
                   </p>
-              </div>
-            </div>
+                      </div>
+                    </div>
           ) : currentContent ? (
               <div className="flex gap-6">
                 {/* Compact Poster */}
@@ -817,43 +902,59 @@ const StreamingSlotMachine = () => {
                       <span className="text-gray-400 text-sm">No Image</span>
                     </div>
                   )}
-                </div>
-                
+                  </div>
+                  
                 {/* Content Details - Horizontal Layout */}
                 <div className="flex-1 space-y-4">
-                  {/* Title and Type/Genre */}
+                  {/* Title, Content Rating, and Streaming Providers */}
                   <div>
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-3xl font-bold text-white">{currentContent.title}</h3>
-                      <div className="flex gap-2">
-                        <span className="px-2 py-1 bg-purple-600/80 text-white text-xs font-medium rounded-md">
-                          {currentContent.type === 'movie' ? 'Movie' : 'TV Show'}
-                        </span>
-                        <span className="px-2 py-1 bg-blue-600/80 text-white text-xs font-medium rounded-md">
-                          {currentContent.genre}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-gray-300 text-base leading-relaxed line-clamp-3">{currentContent.overview}</p>
-                  </div>
-                  
-                  {/* Rating and Stars */}
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-yellow-400 text-lg">★</span>
-                      <span className="text-white font-bold text-lg">
-                        {currentContent.voteAverage ? `${currentContent.voteAverage.toFixed(1)}/10` : 'N/A'}
-                    </span>
-                    </div>
                     {currentContent.rating && (
-                      <span className="px-2 py-1 bg-orange-600/80 text-white text-xs font-medium rounded-md">
+                        <span className="px-2 py-1 bg-orange-600/80 text-white text-xs font-medium rounded-md">
                         {currentContent.rating}
                       </span>
                     )}
-                  </div>
+                      {/* Streaming Providers */}
+                      {currentContent.providers && currentContent.providers.length > 0 && (
+                        <div className="flex items-center gap-2 ml-5">
+                          {currentContent.providers.map((provider: string, index: number) => {
+                            const service = streamingServices.find(s => s.name === provider);
+                            const serviceColor = service ? service.color : '#777777';
+                          return (
+                            <span 
+                                key={index}
+                                className="px-3 py-1.5 rounded-full text-xs font-medium text-white border border-white/20"
+                                style={{ backgroundColor: `${serviceColor}20`, borderColor: serviceColor }}
+                            >
+                              {provider}
+                            </span>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+                    <p className="text-gray-300 text-base leading-relaxed line-clamp-3">{currentContent.overview}</p>
+              </div>
+              
+                  {/* Star Rating */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-yellow-400 text-lg">★</span>
+                    <span className="text-white font-bold text-lg">
+                      {currentContent.voteAverage ? `${currentContent.voteAverage.toFixed(1)}/10` : 'N/A'}
+                    </span>
+              </div>
                   
                   {/* Metadata Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-400 block">Type</span>
+                      <span className="text-white font-medium">{currentContent.type === 'movie' ? 'Movie' : 'TV Show'}</span>
+            </div>
+                    <div>
+                      <span className="text-gray-400 block">Genre</span>
+                      <span className="text-white font-medium">{currentContent.genre}</span>
+              </div>
                     <div>
                       <span className="text-gray-400 block">Release Date</span>
                       <span className="text-white font-medium">{currentContent.releaseDate}</span>
@@ -870,27 +971,53 @@ const StreamingSlotMachine = () => {
                         <span className="text-white font-medium">{currentContent.numberOfSeasons}</span>
                       </div>
                     )}
-                  </div>
-                  
-                  {/* Streaming Providers */}
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-400 mb-2">Available on:</h4>
-                      <div className="flex flex-wrap gap-2">
-                      {currentContent.providers.map((provider: string, index: number) => {
-                        const service = streamingServices.find(s => s.name === provider);
-                        const serviceColor = service ? service.color : '#777777';
-                          return (
-                            <span 
-                            key={index}
-                            className="px-3 py-1.5 rounded-full text-xs font-medium text-white border border-white/20"
-                            style={{ backgroundColor: `${serviceColor}20`, borderColor: serviceColor }}
-                            >
-                              {provider}
-                            </span>
-                          );
-                        })}
-                      </div>
+                    {currentContent.numberOfEpisodes && (
+                      <div>
+                        <span className="text-gray-400 block">Episodes</span>
+                        <span className="text-white font-medium">{currentContent.numberOfEpisodes}</span>
+            </div>
+          )}
+        </div>
+        
+                  {/* Cast and Director/Creator */}
+                  {(currentContent.cast && currentContent.cast.length > 0) || (currentContent.director || currentContent.creator) ? (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-400 mb-2">
+                        {currentContent.cast && currentContent.cast.length > 0 && (currentContent.director || currentContent.creator) 
+                          ? `Cast & ${currentContent.type === 'movie' ? 'Director' : 'Creator'}:`
+                          : currentContent.cast && currentContent.cast.length > 0 
+                            ? 'Cast:'
+                            : `${currentContent.type === 'movie' ? 'Director' : 'Creator'}:`
+                        }
+                      </h4>
+                      <p className="text-white text-sm">
+                        {currentContent.cast && currentContent.cast.length > 0 && (currentContent.director || currentContent.creator)
+                          ? `${currentContent.cast.join(', ')} • ${currentContent.director || currentContent.creator}`
+                          : currentContent.cast && currentContent.cast.length > 0
+                            ? currentContent.cast.join(', ')
+                            : currentContent.director || currentContent.creator
+                        }
+                      </p>
                     </div>
+                  ) : null}
+                  
+                  {/* Keywords */}
+                  {currentContent.keywords && currentContent.keywords.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-400 mb-2">Keywords:</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {currentContent.keywords.map((keyword: string, index: number) => (
+                          <span 
+                            key={index}
+                            className="px-2 py-1 bg-slate-600/40 text-white text-xs rounded-md border border-slate-500/30"
+                          >
+                            {keyword}
+                          </span>
+                ))}
+              </div>
+                    </div>
+                  )}
+                  
               </div>
             </div>
           ) : (
@@ -904,20 +1031,17 @@ const StreamingSlotMachine = () => {
         </div>
       </div>
 
-      {/* Playful Error Pill */}
+        {/* Playful Error Pill */}
       {showErrorModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-full px-8 py-4 shadow-2xl transform transition-all animate-fadeIn">
-            <div className="flex items-center space-x-3">
-              <span className="text-white text-lg font-medium">
-                {currentError?.message || errorMessage}
-              </span>
-              <button 
+         <div 
+           className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 cursor-pointer"
                 onClick={closeErrorModal}
-                className="text-white hover:text-gray-200 transition-colors duration-200 text-xl font-bold"
-              >
-                ×
-              </button>
+         >
+           <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-full px-8 py-4 shadow-2xl transform transition-all animate-fadeIn">
+             <div className="flex items-center justify-center">
+               <span className="text-white text-lg font-medium">
+                 {currentError?.message || errorMessage}
+               </span>
             </div>
           </div>
         </div>

@@ -255,4 +255,71 @@ export const normalizeProviderName = (providerName: string): string => {
   };
 
   return providerNameMap[providerName] || providerName;
+};
+
+// Interface for cast member
+export interface CastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+}
+
+// Interface for crew member
+export interface CrewMember {
+  id: number;
+  name: string;
+  job: string;
+  department: string;
+  profile_path: string | null;
+}
+
+// Interface for keywords
+export interface Keyword {
+  id: number;
+  name: string;
+}
+
+// Get cast and crew information
+export const getCredits = async (type: 'movie' | 'tv', id: number) => {
+  try {
+    const response = await tmdbApi.get(`/${type}/${id}/credits`);
+    return {
+      cast: response.data.cast.slice(0, 3), // Get top 3 cast members
+      crew: response.data.crew
+    };
+  } catch (error) {
+    console.error('Error fetching credits:', error);
+    return { cast: [], crew: [] };
+  }
+};
+
+// Get keywords for content
+export const getKeywords = async (type: 'movie' | 'tv', id: number): Promise<Keyword[]> => {
+  try {
+    const response = await tmdbApi.get(`/${type}/${id}/keywords`);
+    // TV shows return keywords in 'results', movies in 'keywords'
+    const keywords = type === 'tv' ? response.data.results : response.data.keywords;
+    return keywords.slice(0, 5); // Limit to 5 keywords
+  } catch (error) {
+    console.error('Error fetching keywords:', error);
+    return [];
+  }
+};
+
+// Get detailed TV show information
+export const getTVDetails = async (id: number) => {
+  try {
+    const response = await tmdbApi.get(`/tv/${id}`);
+    return {
+      number_of_episodes: response.data.number_of_episodes,
+      number_of_seasons: response.data.number_of_seasons,
+      created_by: response.data.created_by,
+      networks: response.data.networks,
+      status: response.data.status
+    };
+  } catch (error) {
+    console.error('Error fetching TV details:', error);
+    return null;
+  }
 }; 
