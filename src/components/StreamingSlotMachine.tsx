@@ -142,6 +142,12 @@ const StreamingSlotMachine = () => {
     setErrorMessage('');
   };
 
+  // Reset used content IDs when spins are exhausted or reset
+  const resetUsedContent = () => {
+    setUsedContentIds(new Set());
+    console.log("Reset used content IDs - fresh content pool available");
+  };
+
   const createError = (type: ErrorType, message: string, details?: string): AppError => ({
     type,
     message,
@@ -508,7 +514,24 @@ const StreamingSlotMachine = () => {
         // Filter out already used content
         const availableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
         
-        if (availableContent.length > 0) {
+        // If we have very few available items (less than 3), reset the used content pool
+        if (availableContent.length < 3 && contentWithProviders.length > 5) {
+          console.log("Very few available content items, resetting used content pool...");
+          resetUsedContent();
+          const freshAvailableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
+          if (freshAvailableContent.length > 0) {
+            const randomIndex = Math.floor(Math.random() * freshAvailableContent.length);
+            const selectedContentWithProviders = freshAvailableContent[randomIndex];
+            selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
+            finalProviders = selectedContentWithProviders.actualProviders;
+        } else {
+            // Fallback to any content
+            const randomIndex = Math.floor(Math.random() * contentWithProviders.length);
+            const selectedContentWithProviders = contentWithProviders[randomIndex];
+            selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
+            finalProviders = selectedContentWithProviders.actualProviders;
+          }
+        } else if (availableContent.length > 0) {
           // Use content with matching providers that hasn't been used
           const randomIndex = Math.floor(Math.random() * availableContent.length);
           const selectedContentWithProviders = availableContent[randomIndex];
@@ -517,7 +540,7 @@ const StreamingSlotMachine = () => {
         } else {
           // If all content has been used, reset and use any content
           console.log("All content with providers has been used, resetting...");
-          setUsedContentIds(new Set());
+          resetUsedContent();
           const randomIndex = Math.floor(Math.random() * contentWithProviders.length);
           const selectedContentWithProviders = contentWithProviders[randomIndex];
           selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
@@ -533,7 +556,7 @@ const StreamingSlotMachine = () => {
         } else {
           // If all content has been used, reset and use any content
           console.log("All fallback content has been used, resetting...");
-          setUsedContentIds(new Set());
+          resetUsedContent();
           const randomIndex = Math.floor(Math.random() * allContent.length);
           selectedContent = allContent[randomIndex];
         }
@@ -556,6 +579,8 @@ const StreamingSlotMachine = () => {
       console.log("Content type:", 'title' in selectedContent ? 'movie' : 'tv');
       console.log("All content length:", allContent.length);
       console.log("Content with providers length:", contentWithProviders.length);
+      console.log("Used content IDs:", Array.from(usedContentIds));
+      console.log("Available content after filtering:", contentWithProviders.filter(item => !usedContentIds.has(item.id)).length);
       
       const formattedContent = await formatContentItem(selectedContent, finalProviders);
       
@@ -641,15 +666,49 @@ const StreamingSlotMachine = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white pb-24">
-      {/* Modern Header */}
+      {/* 80s Digital Header */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.15),transparent_60%)]"></div>
-        <div className="relative max-w-7xl mx-auto px-6 py-14">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,255,255,0.1),transparent_60%)]"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-purple-500/5 to-pink-500/5"></div>
+        <div className="relative max-w-7xl mx-auto px-6 py-16">
           <div className="text-center">
-            <h1 className="text-5xl md:text-6xl font-semibold mb-3 bg-gradient-to-r from-white via-blue-100 to-purple-200 bg-clip-text text-transparent tracking-tight">
-          What Should I Watch?
+            {/* 80s Digital Logo */}
+            <div className="mb-6">
+              <h1 className="text-3xl md:text-4xl font-black mb-2 tracking-wider transform -skew-x-6" 
+                  style={{
+                    background: 'linear-gradient(45deg, #00ffff, #ff00ff, #ffff00, #00ff00)',
+                    backgroundSize: '400% 400%',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    animation: 'gradientShift 3s ease-in-out infinite',
+                    textShadow: '0 0 20px rgba(0, 255, 255, 0.5), 0 0 40px rgba(255, 0, 255, 0.3)',
+                    fontFamily: 'monospace'
+                  }}>
+                WHAT SHOULD I WATCH
         </h1>
-            <p className="text-xl md:text-2xl text-gray-300 font-light">Stop scrolling. Start watching.</p>
+      </div>
+      
+            {/* 80s Digital Tagline */}
+            <div className="relative">
+              <p className="text-lg md:text-xl font-bold text-pink-400 tracking-wider transform skew-x-6" 
+                 style={{ 
+                   textShadow: '0 0 15px rgba(255, 0, 255, 0.6)',
+                   fontFamily: 'monospace'
+                 }}>
+                Stop Searching. Start Watching.
+              </p>
+              {/* Digital grid overlay */}
+              <div className="absolute inset-0 pointer-events-none opacity-20">
+                <div className="w-full h-full" style={{
+                  backgroundImage: `
+                    linear-gradient(rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0, 255, 255, 0.1) 1px, transparent 1px)
+                  `,
+                  backgroundSize: '20px 20px'
+                }}></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -883,29 +942,29 @@ const StreamingSlotMachine = () => {
                       </div>
                     </div>
           ) : currentContent ? (
-              <div className="flex gap-6">
+              <div className="flex gap-4">
                 {/* Compact Poster */}
                 <div className="flex-shrink-0">
                   {currentContent.posterPath ? (
                     <Image
-                      src={`https://image.tmdb.org/t/p/w300${currentContent.posterPath}`}
+                      src={`https://image.tmdb.org/t/p/w400${currentContent.posterPath}`}
                       alt={currentContent.title}
-                      width={200}
-                      height={300}
-                      className="w-48 h-72 object-cover rounded-xl shadow-2xl"
+                      width={280}
+                      height={420}
+                      className="w-64 h-96 object-cover rounded-xl shadow-2xl"
                       priority
                       placeholder="blur"
                       blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
                     />
                   ) : (
-                    <div className="w-48 h-72 bg-gradient-to-br from-gray-700 to-gray-800 rounded-xl flex items-center justify-center">
+                    <div className="w-64 h-96 bg-gradient-to-br from-gray-700 to-gray-800 rounded-xl flex items-center justify-center">
                       <span className="text-gray-400 text-sm">No Image</span>
                     </div>
                   )}
                   </div>
                   
                 {/* Content Details - Horizontal Layout */}
-                <div className="flex-1 space-y-4">
+                <div className="flex-1 space-y-3">
                   {/* Title, Content Rating, and Streaming Providers */}
                   <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -934,7 +993,7 @@ const StreamingSlotMachine = () => {
                     </div>
                   )}
                 </div>
-                    <p className="text-gray-300 text-base leading-relaxed line-clamp-3">{currentContent.overview}</p>
+                    <p className="text-gray-300 text-sm leading-relaxed">{currentContent.overview}</p>
               </div>
               
                   {/* Star Rating */}
@@ -948,32 +1007,32 @@ const StreamingSlotMachine = () => {
                   {/* Metadata Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-400 block">Type</span>
+                      <span className="text-purple-400 block">Type</span>
                       <span className="text-white font-medium">{currentContent.type === 'movie' ? 'Movie' : 'TV Show'}</span>
             </div>
                     <div>
-                      <span className="text-gray-400 block">Genre</span>
+                      <span className="text-purple-400 block">Genre</span>
                       <span className="text-white font-medium">{currentContent.genre}</span>
               </div>
                     <div>
-                      <span className="text-gray-400 block">Release Date</span>
+                      <span className="text-purple-400 block">Release Date</span>
                       <span className="text-white font-medium">{currentContent.releaseDate}</span>
                       </div>
                     {currentContent.runtime && (
                       <div>
-                        <span className="text-gray-400 block">Duration</span>
+                        <span className="text-purple-400 block">Duration</span>
                         <span className="text-white font-medium">{currentContent.runtime} min</span>
                       </div>
                     )}
                     {currentContent.numberOfSeasons && (
                       <div>
-                        <span className="text-gray-400 block">Seasons</span>
+                        <span className="text-purple-400 block">Seasons</span>
                         <span className="text-white font-medium">{currentContent.numberOfSeasons}</span>
                       </div>
                     )}
                     {currentContent.numberOfEpisodes && (
                       <div>
-                        <span className="text-gray-400 block">Episodes</span>
+                        <span className="text-purple-400 block">Episodes</span>
                         <span className="text-white font-medium">{currentContent.numberOfEpisodes}</span>
             </div>
           )}
@@ -982,7 +1041,7 @@ const StreamingSlotMachine = () => {
                   {/* Cast and Director/Creator */}
                   {(currentContent.cast && currentContent.cast.length > 0) || (currentContent.director || currentContent.creator) ? (
                     <div>
-                      <h4 className="text-sm font-semibold text-gray-400 mb-2">
+                      <h4 className="text-sm font-semibold text-purple-400 mb-2">
                         {currentContent.cast && currentContent.cast.length > 0 && (currentContent.director || currentContent.creator) 
                           ? `Cast & ${currentContent.type === 'movie' ? 'Director' : 'Creator'}:`
                           : currentContent.cast && currentContent.cast.length > 0 
@@ -998,13 +1057,13 @@ const StreamingSlotMachine = () => {
                             : currentContent.director || currentContent.creator
                         }
                       </p>
-                    </div>
+          </div>
                   ) : null}
                   
                   {/* Keywords */}
                   {currentContent.keywords && currentContent.keywords.length > 0 && (
                     <div>
-                      <h4 className="text-sm font-semibold text-gray-400 mb-2">Keywords:</h4>
+                      <h4 className="text-sm font-semibold text-purple-400 mb-2">Keywords:</h4>
                       <div className="flex flex-wrap gap-2">
                         {currentContent.keywords.map((keyword: string, index: number) => (
                           <span 
