@@ -667,10 +667,8 @@ const StreamingSlotMachine = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white pb-24">
       {/* 80s Digital Header */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,255,255,0.1),transparent_60%)]"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-purple-500/5 to-pink-500/5"></div>
-        <div className="relative max-w-7xl mx-auto px-6 py-16">
+      <div className="relative">
+        <div className="max-w-7xl mx-auto px-6 py-16">
           <div className="text-center">
             {/* 80s Digital Logo */}
             <div className="mb-6">
