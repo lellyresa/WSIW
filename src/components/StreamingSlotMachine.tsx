@@ -451,18 +451,18 @@ const StreamingSlotMachine = () => {
         const movieDetails = await fetch(
           `https://api.themoviedb.org/3/movie/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
         ).then(res => res.json());
-            runtime = movieDetails.runtime;
-        } else {
+        runtime = movieDetails.runtime;
+      } else {
         const tvDetails = await fetch(
           `https://api.themoviedb.org/3/tv/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
         ).then(res => res.json());
-            numberOfSeasons = tvDetails.number_of_seasons;
-            runtime = tvDetails.episode_run_time?.[0];
-        }
-        
-        // Get content rating
+        numberOfSeasons = tvDetails.number_of_seasons;
+        runtime = tvDetails.episode_run_time?.[0];
+      }
+      
+      // Get content rating
       rating = await getContentRating(isMovie ? 'movie' : 'tv', content.id);
-        } catch (error) {
+    } catch (error) {
       console.error('Error fetching content details:', error);
     } finally {
       setLoadingState('gettingDetails', false);
