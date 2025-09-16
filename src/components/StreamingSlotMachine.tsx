@@ -5,6 +5,9 @@ import {
   getProviders, 
   getContentRating, 
   getContentByProvider, 
+  getPopularByProvider,
+  getRandomContent,
+  getContentByProviderAndGenre,
   getTrendingContent,
   getCredits,
   getKeywords,
@@ -315,13 +318,13 @@ const StreamingSlotMachine = () => {
         }
       }
       
-      // Strategy 3: Try trending content as fallback
+      // Strategy 3: Try popular content for this provider
       if (allContent.length < 5) {
         try {
-          console.log(`Strategy 3: Trending content as fallback`);
-          const trendingContent = await getTrendingContent(contentType, 'week');
+          console.log(`Strategy 3: Popular content for provider ${providerId}`);
+          const popularContent = await getPopularByProvider(providerId, 1);
           
-          for (const item of trendingContent) {
+          for (const item of popularContent) {
             if (!allContent.some(c => c.id === item.id)) {
               allContent.push(item);
             }
@@ -332,13 +335,13 @@ const StreamingSlotMachine = () => {
         }
       }
       
-      // Strategy 4: Try trending content without provider filtering
+      // Strategy 4: Try random content without provider filtering
       if (allContent.length < 5) {
         try {
-          console.log(`Strategy 4: Trending content without provider filtering`);
-          const trendingContent = await getTrendingContent(contentType, 'day');
+          console.log(`Strategy 4: Random content without provider filtering`);
+          const randomContent = await getRandomContent(contentType, undefined, 1);
           
-          for (const item of trendingContent) {
+          for (const item of randomContent) {
             if (!allContent.some(c => c.id === item.id)) {
               allContent.push(item);
             }

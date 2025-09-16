@@ -147,6 +147,141 @@ export const getTrendingContent = async (type: 'movie' | 'tv', timeWindow: 'day'
   return response.results;
 };
 
+export const getPopularByProvider = async (providerId: number, page: number = 1): Promise<TMDBMovie[] | TMDBShow[]> => {
+  // Try both movie and TV content for maximum variety
+  const [movieResults, tvResults] = await Promise.all([
+    callTMDBAPI<TMDBResponse<TMDBMovie>>('/discover/movie', {
+      with_watch_providers: providerId,
+      watch_region: 'US',
+      sort_by: 'popularity.desc',
+      page: page,
+      'vote_count.gte': 10,
+      'vote_average.gte': 4.0
+    }).catch(() => ({ results: [] })),
+    callTMDBAPI<TMDBResponse<TMDBShow>>('/discover/tv', {
+      with_watch_providers: providerId,
+      watch_region: 'US',
+      sort_by: 'popularity.desc',
+      page: page,
+      'vote_count.gte': 10,
+      'vote_average.gte': 4.0
+    }).catch(() => ({ results: [] }))
+  ]);
+  
+  // Combine and shuffle results for variety
+  const combined = [...movieResults.results, ...tvResults.results];
+  return combined.sort(() => Math.random() - 0.5);
+};
+
+export const getRandomContent = async (
+  type: 'movie' | 'tv', 
+  genreId?: number, 
+  page: number = 1
+): Promise<TMDBMovie[] | TMDBShow[]> => {
+  // Generate random page number between 1-500 for maximum variety
+  const randomPage = Math.floor(Math.random() * 500) + 1;
+  
+  // Use different sorting methods for variety
+  const sortMethods = [
+    'popularity.desc',
+    'vote_average.desc',
+    'release_date.desc',
+    'revenue.desc',
+    'vote_count.desc'
+  ];
+  const randomSort = sortMethods[Math.floor(Math.random() * sortMethods.length)];
+  
+  const params: any = {
+    sort_by: randomSort,
+    page: randomPage,
+    'vote_count.gte': 5,
+    'vote_average.gte': 3.0, // Lower threshold for more variety
+    watch_region: 'US'
+  };
+  
+  // Add genre filter if specified
+  if (genreId) {
+    params.with_genres = genreId;
+  }
+  
+  // Add random year range for even more variety
+  const currentYear = new Date().getFullYear();
+  const randomStartYear = Math.floor(Math.random() * 50) + (currentYear - 50); // Random year from last 50 years
+  const randomEndYear = randomStartYear + Math.floor(Math.random() * 10); // 10 year range
+  
+  if (type === 'movie') {
+    params['primary_release_date.gte'] = `${randomStartYear}-01-01`;
+    params['primary_release_date.lte'] = `${Math.min(randomEndYear, currentYear)}-12-31`;
+  } else {
+    params['first_air_date.gte'] = `${randomStartYear}-01-01`;
+    params['first_air_date.lte'] = `${Math.min(randomEndYear, currentYear)}-12-31`;
+  }
+  
+  try {
+    const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, params);
+    
+    // Shuffle results for additional randomness
+    return response.results.sort(() => Math.random() - 0.5);
+  } catch (error) {
+    console.error('Error fetching random content:', error);
+    // Fallback to simpler query without date filters
+    const fallbackParams = {
+      sort_by: randomSort,
+      page: Math.min(randomPage, 100), // Limit fallback page
+      'vote_count.gte': 5,
+      watch_region: 'US'
+    };
+    
+    if (genreId) {
+      fallbackParams.with_genres = genreId;
+    }
+    
+    const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, fallbackParams);
+    return response.results.sort(() => Math.random() - 0.5);
+  }
+};
+
+export const getContentByProviderAndGenre = async (
+  type: 'movie' | 'tv',
+  providerId: number,
+  genreId: number,
+  page: number = 1
+): Promise<TMDBMovie[] | TMDBShow[]> => {
+  // Use random page and sorting for variety
+  const randomPage = Math.floor(Math.random() * 20) + 1; // Random page 1-20
+  const sortMethods = ['popularity.desc', 'vote_average.desc', 'release_date.desc'];
+  const randomSort = sortMethods[Math.floor(Math.random() * sortMethods.length)];
+  
+  const params = {
+    with_watch_providers: providerId,
+    with_genres: genreId,
+    watch_region: 'US',
+    sort_by: randomSort,
+    page: randomPage,
+    'vote_count.gte': 5,
+    'vote_average.gte': 4.0
+  };
+
+  try {
+    const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, params);
+    return response.results.sort(() => Math.random() - 0.5);
+  } catch (error) {
+    console.error(`Error fetching content for provider ${providerId} and genre ${genreId}:`, error);
+    
+    // Fallback: try without genre filter
+    const fallbackParams = {
+      with_watch_providers: providerId,
+      watch_region: 'US',
+      sort_by: randomSort,
+      page: Math.min(randomPage, 10),
+      'vote_count.gte': 5
+    };
+    
+    const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, fallbackParams);
+    return response.results.sort(() => Math.random() - 0.5);
+  }
+};
+
 // Provider mappings (these don't need to be secret)
 export const providerMap: Record<string, number> = {
   'Netflix': 8,
