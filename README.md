@@ -36,9 +36,12 @@ A modern web application that helps you discover your next favorite movie or TV 
 3. **Set up environment variables**
    Create a `.env.local` file in the root directory:
    ```env
-   NEXT_PUBLIC_TMDB_API_KEY=your_api_key_here
-   NEXT_PUBLIC_TMDB_ACCESS_TOKEN=your_access_token_here
+   # Server-side only - these will NOT be exposed to the client
+   TMDB_API_KEY=your_api_key_here
+   TMDB_ACCESS_TOKEN=your_access_token_here
    ```
+   
+   **⚠️ Security Note**: Do NOT use `NEXT_PUBLIC_` prefix. The app now uses secure server-side API routes to protect your credentials.
 
 4. **Run the development server**
    ```bash
@@ -47,6 +50,13 @@ A modern web application that helps you discover your next favorite movie or TV 
 
 5. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
+
+## 🔒 Security Features
+
+- **Server-side API calls**: All TMDB requests go through secure API routes
+- **Hidden credentials**: API keys are never exposed to the client
+- **Rate limit protection**: API calls come from your server, not client browsers
+- **Caching**: Built-in 1-hour caching to reduce API calls
 
 ## 🛠️ Tech Stack
 

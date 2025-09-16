@@ -2,26 +2,25 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { 
   getGenres, 
-  getRandomContent, 
   getProviders, 
   getContentRating, 
   getContentByProvider, 
-  getContentByProviderAndGenre,
-  getPopularByProvider,
   getTrendingContent,
   getCredits,
   getKeywords,
   getTVDetails,
+  getContentDetails,
   providerMap, 
   providerIdToName,
   normalizeProviderName,
+  testProviderAvailability,
   Genre, 
   TMDBMovie, 
   TMDBShow,
   CastMember,
   CrewMember,
   Keyword
-} from '@/lib/tmdb';
+} from '@/lib/tmdb-secure';
 
 interface ContentItem {
   id: number;
