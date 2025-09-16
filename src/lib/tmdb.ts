@@ -295,7 +295,7 @@ export const testProviderAvailability = async (providerId: number): Promise<bool
     console.log(`Provider ${providerId} (${providerIdToName[providerId] || 'Unknown'}) availability: ${hasContent ? 'Available' : 'No content'}`);
     return hasContent;
   } catch (error) {
-    console.log(`Provider ${providerId} (${providerIdToName[providerId] || 'Unknown'}) test failed:`, error.message);
+    console.log(`Provider ${providerId} (${providerIdToName[providerId] || 'Unknown'}) test failed:`, error);
     return false;
   }
 };

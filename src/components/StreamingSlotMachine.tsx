@@ -356,7 +356,7 @@ const StreamingSlotMachine = () => {
       if (allContent.length < 5) {
         try {
         console.log(`Strategy 5: Trending content (last resort)`);
-          const trendingContent = await getTrendingContent(1);
+          const trendingContent = await getTrendingContent(contentType);
           
           for (const item of trendingContent) {
             if (!allContent.some(c => c.id === item.id)) {

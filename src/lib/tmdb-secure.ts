@@ -102,17 +102,17 @@ export const getContentByProvider = async (
   };
 
   const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, params);
-  return response.results;
+  return response.results as TMDBMovie[] | TMDBShow[];
 };
 
 export const getProviders = async (type: 'movie' | 'tv', contentId: number): Promise<any> => {
-  const response = await callTMDBAPI(`/${type}/${contentId}/watch/providers`);
+  const response = await callTMDBAPI<any>(`/${type}/${contentId}/watch/providers`);
   return response.results?.US || { flatrate: [], buy: [], rent: [] };
 };
 
 export const getContentRating = async (type: 'movie' | 'tv', contentId: number): Promise<string | null> => {
   try {
-    const response = await callTMDBAPI(`/${type}/${contentId}/content_ratings`);
+    const response = await callTMDBAPI<any>(`/${type}/${contentId}/content_ratings`);
     const usRating = response.results?.find((r: any) => r.iso_3166_1 === 'US');
     return usRating?.rating || null;
   } catch (error) {
@@ -123,28 +123,28 @@ export const getContentRating = async (type: 'movie' | 'tv', contentId: number):
 
 export const getContentDetails = async (content: TMDBMovie | TMDBShow): Promise<any> => {
   const type = 'title' in content ? 'movie' : 'tv';
-  const response = await callTMDBAPI(`/${type}/${content.id}`);
+  const response = await callTMDBAPI<any>(`/${type}/${content.id}`);
   return response;
 };
 
 export const getCredits = async (type: 'movie' | 'tv', contentId: number): Promise<{ cast: CastMember[], crew: CrewMember[] }> => {
-  const response = await callTMDBAPI(`/${type}/${contentId}/credits`);
+  const response = await callTMDBAPI<any>(`/${type}/${contentId}/credits`);
   return response;
 };
 
 export const getKeywords = async (type: 'movie' | 'tv', contentId: number): Promise<Keyword[]> => {
-  const response = await callTMDBAPI(`/${type}/${contentId}/keywords`);
+  const response = await callTMDBAPI<any>(`/${type}/${contentId}/keywords`);
   return response.keywords || response.results || [];
 };
 
 export const getTVDetails = async (contentId: number): Promise<any> => {
-  const response = await callTMDBAPI(`/tv/${contentId}`);
+  const response = await callTMDBAPI<any>(`/tv/${contentId}`);
   return response;
 };
 
 export const getTrendingContent = async (type: 'movie' | 'tv', timeWindow: 'day' | 'week' = 'week'): Promise<TMDBMovie[] | TMDBShow[]> => {
   const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/trending/${type}/${timeWindow}`);
-  return response.results;
+  return response.results as TMDBMovie[] | TMDBShow[];
 };
 
 export const getPopularByProvider = async (providerId: number, page: number = 1): Promise<TMDBMovie[] | TMDBShow[]> => {
@@ -170,7 +170,7 @@ export const getPopularByProvider = async (providerId: number, page: number = 1)
   
   // Combine and shuffle results for variety
   const combined = [...movieResults.results, ...tvResults.results];
-  return combined.sort(() => Math.random() - 0.5);
+  return combined.sort(() => Math.random() - 0.5) as TMDBMovie[] | TMDBShow[];
 };
 
 export const getRandomContent = async (
@@ -221,11 +221,11 @@ export const getRandomContent = async (
     const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, params);
     
     // Shuffle results for additional randomness
-    return response.results.sort(() => Math.random() - 0.5);
+    return response.results.sort(() => Math.random() - 0.5) as TMDBMovie[] | TMDBShow[];
   } catch (error) {
     console.error('Error fetching random content:', error);
     // Fallback to simpler query without date filters
-    const fallbackParams = {
+    const fallbackParams: any = {
       sort_by: randomSort,
       page: Math.min(randomPage, 100), // Limit fallback page
       'vote_count.gte': 5,
@@ -237,7 +237,7 @@ export const getRandomContent = async (
     }
     
     const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, fallbackParams);
-    return response.results.sort(() => Math.random() - 0.5);
+    return response.results.sort(() => Math.random() - 0.5) as TMDBMovie[] | TMDBShow[];
   }
 };
 
@@ -264,7 +264,7 @@ export const getContentByProviderAndGenre = async (
 
   try {
     const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, params);
-    return response.results.sort(() => Math.random() - 0.5);
+    return response.results.sort(() => Math.random() - 0.5) as TMDBMovie[] | TMDBShow[];
   } catch (error) {
     console.error(`Error fetching content for provider ${providerId} and genre ${genreId}:`, error);
     
@@ -278,7 +278,7 @@ export const getContentByProviderAndGenre = async (
     };
     
     const response = await callTMDBAPI<TMDBResponse<TMDBMovie | TMDBShow>>(`/discover/${type}`, fallbackParams);
-    return response.results.sort(() => Math.random() - 0.5);
+    return response.results.sort(() => Math.random() - 0.5) as TMDBMovie[] | TMDBShow[];
   }
 };
 
@@ -323,7 +323,7 @@ export const normalizeProviderName = (name: string): string => {
 
 export const testProviderAvailability = async (providerId: number): Promise<boolean> => {
   try {
-    const response = await callTMDBAPI('/discover/movie', {
+    const response = await callTMDBAPI<any>('/discover/movie', {
       with_watch_providers: providerId,
       watch_region: 'US',
       page: 1,
