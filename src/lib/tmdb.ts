@@ -85,7 +85,7 @@ export const providerMap: Record<string, number> = {
   'Disney+': 337,
   'Hulu': 15,
   'Prime Video': 9,
-  'HBO Max': 384,
+  'HBO Max': 1899, // Updated to Max provider ID
   'Apple TV+': 350
 };
 
@@ -106,13 +106,47 @@ export const getContentByProvider = async (
       watch_region: 'US',
       sort_by: 'popularity.desc',
       page: page,
-      'vote_count.gte': 20
+      'vote_count.gte': 10 // Lowered threshold for more results
     };
     
+    console.log(`Fetching ${type} content for provider ${providerId} (${providerIdToName[providerId] || 'Unknown'})`);
     const response = await tmdbApi.get(`/discover/${type}`, { params });
+    
+    console.log(`Found ${response.data.results.length} results for provider ${providerId}`);
     return response.data.results;
   } catch (error) {
-    console.error(`Error fetching content for provider ${providerId}:`, error);
+    console.error(`Error fetching content for provider ${providerId} (${providerIdToName[providerId] || 'Unknown'}):`, error);
+    
+    // If it's a 404 or similar, try alternative provider IDs
+    if (providerId === 1899) { // HBO Max/Max
+      console.log('Trying alternative HBO Max provider IDs...');
+      const alternativeIds = [384, 31, 1899]; // Try old HBO Max ID, HBO, and Max
+      
+      for (const altId of alternativeIds) {
+        if (altId === providerId) continue;
+        
+        try {
+          const altParams = {
+            with_watch_providers: altId,
+            watch_region: 'US',
+            sort_by: 'popularity.desc',
+            page: page,
+            'vote_count.gte': 10
+          };
+          
+          console.log(`Trying alternative provider ID ${altId}...`);
+          const altResponse = await tmdbApi.get(`/discover/${type}`, { params: altParams });
+          
+          if (altResponse.data.results.length > 0) {
+            console.log(`Success with alternative provider ID ${altId}, found ${altResponse.data.results.length} results`);
+            return altResponse.data.results;
+          }
+        } catch (altError) {
+          console.log(`Alternative provider ID ${altId} also failed:`, altError);
+        }
+      }
+    }
+    
     return [];
   }
 };
@@ -141,7 +175,17 @@ export const getContentRating = async (type: 'movie' | 'tv', id: number) => {
     } else {
       const response = await tmdbApi.get(`/movie/${id}/release_dates`);
       const usRelease = response.data.results.find((r: any) => r.iso_3166_1 === 'US');
-      return usRelease ? usRelease.release_dates[0]?.certification : null;
+      if (!usRelease || !Array.isArray(usRelease.release_dates)) return null;
+
+      // Prefer entries with a non-empty certification. If multiple, favor theatrical/physical releases.
+      const nonEmptyCerts = usRelease.release_dates.filter((d: any) =>
+        d && typeof d.certification === 'string' && d.certification.trim() !== ''
+      );
+      if (nonEmptyCerts.length === 0) return null;
+
+      // TMDB types: 3 = Theatrical, 4 = Digital, 5 = Physical; prefer common public-facing ones
+      const preferred = nonEmptyCerts.find((d: any) => [3, 4, 5].includes(d.type)) || nonEmptyCerts[0];
+      return preferred.certification || null;
     }
   } catch (error) {
     console.error('Error fetching content rating:', error);
@@ -229,6 +273,27 @@ export const getTrendingContent = async (
   } catch (error) {
     console.error('Error fetching trending content:', error);
     return [];
+  }
+};
+
+// Test provider availability
+export const testProviderAvailability = async (providerId: number): Promise<boolean> => {
+  try {
+    const response = await tmdbApi.get('/discover/movie', {
+      params: {
+        with_watch_providers: providerId,
+        watch_region: 'US',
+        page: 1,
+        'vote_count.gte': 1
+      }
+    });
+    
+    const hasContent = response.data.results && response.data.results.length > 0;
+    console.log(`Provider ${providerId} (${providerIdToName[providerId] || 'Unknown'}) availability: ${hasContent ? 'Available' : 'No content'}`);
+    return hasContent;
+  } catch (error) {
+    console.log(`Provider ${providerId} (${providerIdToName[providerId] || 'Unknown'}) test failed:`, error.message);
+    return false;
   }
 };
 
