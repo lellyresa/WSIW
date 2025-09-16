@@ -497,7 +497,7 @@ const StreamingSlotMachine = () => {
     if (isMovie) {
       const directorCrew = credits.crew.find((person: CrewMember) => person.job === 'Director');
       director = directorCrew?.name;
-      } else {
+    } else {
       // For TV shows, use created_by from TV details
       if (tvDetails?.created_by && tvDetails.created_by.length > 0) {
         creator = tvDetails.created_by[0].name;
