@@ -12,9 +12,11 @@ import {
   getCredits,
   getKeywords,
   getTVDetails,
+  getContentDetails,
   providerMap, 
   providerIdToName,
   normalizeProviderName,
+  testProviderAvailability,
   Genre, 
   TMDBMovie, 
   TMDBShow,
@@ -353,8 +355,8 @@ const StreamingSlotMachine = () => {
       // Strategy 5: Last resort - get trending content
       if (allContent.length < 5) {
         try {
-          console.log(`Strategy 5: Trending content (last resort)`);
-          const trendingContent = await getTrendingContent(contentType, 'week');
+        console.log(`Strategy 5: Trending content (last resort)`);
+          const trendingContent = await getTrendingContent(1);
           
           for (const item of trendingContent) {
             if (!allContent.some(c => c.id === item.id)) {
@@ -362,9 +364,8 @@ const StreamingSlotMachine = () => {
             }
           }
         } catch (error) {
-          lastError = error as Error;
-          console.error(`Strategy 5 error:`, error);
-        }
+        lastError = error as Error;
+        console.error(`Strategy 5 error:`, error);
       }
     }
     
@@ -451,18 +452,18 @@ const StreamingSlotMachine = () => {
         const movieDetails = await fetch(
           `https://api.themoviedb.org/3/movie/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
         ).then(res => res.json());
-        runtime = movieDetails.runtime;
-      } else {
+            runtime = movieDetails.runtime;
+        } else {
         const tvDetails = await fetch(
           `https://api.themoviedb.org/3/tv/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
         ).then(res => res.json());
-        numberOfSeasons = tvDetails.number_of_seasons;
-        runtime = tvDetails.episode_run_time?.[0];
-      }
-      
-      // Get content rating
+            numberOfSeasons = tvDetails.number_of_seasons;
+            runtime = tvDetails.episode_run_time?.[0];
+        }
+        
+        // Get content rating
       rating = await getContentRating(isMovie ? 'movie' : 'tv', content.id);
-    } catch (error) {
+        } catch (error) {
       console.error('Error fetching content details:', error);
     } finally {
       setLoadingState('gettingDetails', false);
@@ -497,7 +498,7 @@ const StreamingSlotMachine = () => {
     if (isMovie) {
       const directorCrew = credits.crew.find((person: CrewMember) => person.job === 'Director');
       director = directorCrew?.name;
-    } else {
+      } else {
       // For TV shows, use created_by from TV details
       if (tvDetails?.created_by && tvDetails.created_by.length > 0) {
         creator = tvDetails.created_by[0].name;
@@ -913,7 +914,7 @@ const StreamingSlotMachine = () => {
   useEffect(() => {
     (window as any).testHBO = async () => {
       console.log('Testing HBO Max provider availability...');
-      const { testProviderAvailability } = await import('@/lib/tmdb-secure');
+      const { testProviderAvailability } = await import('@/lib/tmdb');
       
       const hboIds = [1899, 384, 31]; // Max, old HBO Max, HBO
       for (const id of hboIds) {

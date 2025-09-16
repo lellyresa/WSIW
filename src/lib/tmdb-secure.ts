@@ -304,10 +304,17 @@ export const normalizeProviderName = (name: string): string => {
     'disney plus': 'Disney+',
     'disney+': 'Disney+',
     'prime video': 'Prime Video',
+    'amazon prime video': 'Prime Video',
     'amazon prime': 'Prime Video',
+    'amazon video': 'Prime Video',
+    'amazon': 'Prime Video',
     'apple tv': 'Apple TV+',
     'apple tv+': 'Apple TV+',
+    'apple tv plus': 'Apple TV+',
     'netflix': 'Netflix',
+    'netflix basic': 'Netflix',
+    'netflix premium': 'Netflix',
+    'netflix standard': 'Netflix',
     'hulu': 'Hulu'
   };
   
