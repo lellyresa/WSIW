@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const TMDB_API_KEY = process.env.TMDB_API_KEY;
-const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN;
 const BASE_URL = 'https://api.themoviedb.org/3';
-
-if (!TMDB_API_KEY || !TMDB_ACCESS_TOKEN) {
-  throw new Error('Missing TMDB API credentials');
-}
 
 // Generic TMDB API proxy
 export async function POST(request: NextRequest) {
+  // Check environment variables inside the handler, not at module level
+  const TMDB_API_KEY = process.env.TMDB_API_KEY;
+  const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN;
+
+  if (!TMDB_API_KEY || !TMDB_ACCESS_TOKEN) {
+    return NextResponse.json(
+      { error: 'Missing TMDB API credentials' },
+      { status: 500 }
+    );
+  }
+
   try {
     const { endpoint, params = {} } = await request.json();
     
