@@ -915,7 +915,7 @@ const StreamingSlotMachine = () => {
   useEffect(() => {
     (window as any).testHBO = async () => {
       console.log('Testing HBO Max provider availability...');
-      const { testProviderAvailability } = await import('@/lib/tmdb');
+      const { testProviderAvailability } = await import('@/lib/tmdb-secure');
       
       const hboIds = [1899, 384, 31]; // Max, old HBO Max, HBO
       for (const id of hboIds) {
