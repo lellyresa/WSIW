@@ -98,15 +98,17 @@ export const providerIdToName: Record<number, string> = Object.entries(providerM
 export const getContentByProvider = async (
   type: 'movie' | 'tv',
   providerId: number,
-  page: number = 1
+  page: number = 1,
+  sortMethod: string = 'popularity.desc'
 ): Promise<TMDBMovie[] | TMDBShow[]> => {
   try {
     const params: any = {
       with_watch_providers: providerId,
       watch_region: 'US',
-      sort_by: 'popularity.desc',
+      sort_by: sortMethod,
       page: page,
-      'vote_count.gte': 10 // Lowered threshold for more results
+      'vote_count.gte': 5, // Lowered threshold for more results
+      'vote_average.gte': 5.0 // Minimum rating to ensure quality
     };
     
     console.log(`Fetching ${type} content for provider ${providerId} (${providerIdToName[providerId] || 'Unknown'})`);
@@ -129,9 +131,10 @@ export const getContentByProvider = async (
           const altParams = {
             with_watch_providers: altId,
             watch_region: 'US',
-            sort_by: 'popularity.desc',
+            sort_by: sortMethod,
             page: page,
-            'vote_count.gte': 10
+            'vote_count.gte': 5,
+            'vote_average.gte': 5.0
           };
           
           console.log(`Trying alternative provider ID ${altId}...`);

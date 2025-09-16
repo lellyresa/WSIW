@@ -543,21 +543,32 @@ const StreamingSlotMachine = () => {
     }
     
     let allContent: (TMDBMovie | TMDBShow)[] = [];
-    const maxContentPerProvider = 15; // Limit content per provider for balance
+    const maxContentPerProvider = 25; // Increased for more variety
     const failedProviders: string[] = [];
+    
+    // Different sorting methods for variety
+    const sortMethods = [
+      'popularity.desc',
+      'vote_average.desc', 
+      'release_date.desc',
+      'vote_count.desc',
+      'revenue.desc'
+    ];
     
     // Shuffle providers to ensure random order
     const shuffledProviders = [...selectedProviderIds].sort(() => Math.random() - 0.5);
     
-    // Fetch content from each provider
+    // Fetch content from each provider with different sorting methods
     for (const providerId of shuffledProviders) {
       try {
         console.log(`Fetching content from provider ${providerId} (${providerIdToName[providerId]})`);
         
         let providerContentCount = 0;
-        // Try multiple pages for each provider
-        for (let page = 1; page <= 3 && allContent.length < maxContentPerProvider * selectedProviderIds.length; page++) {
-          const content = await getContentByProvider(contentType, providerId, page);
+        // Try multiple pages and sorting methods for each provider
+        for (let page = 1; page <= 5 && providerContentCount < maxContentPerProvider; page++) {
+          // Use different sorting methods to get variety
+          const sortMethod = sortMethods[Math.floor(Math.random() * sortMethods.length)];
+          const content = await getContentByProvider(contentType, providerId, page, sortMethod);
           
           for (const item of content) {
             if (!allContent.some(c => c.id === item.id)) {
@@ -576,21 +587,39 @@ const StreamingSlotMachine = () => {
       }
     }
     
-    // If we don't have enough content, try alternate content type
-    if (allContent.length < 10 && selectedContentTypes.length > 1) {
-      const alternateType = contentType === 'movie' ? 'tv' : 'movie';
-      console.log(`Trying alternate content type: ${alternateType}`);
+    // If we don't have enough content, try alternate content type and trending content
+    if (allContent.length < 15) {
+      console.log(`Only found ${allContent.length} items, trying additional sources...`);
       
-      for (const providerId of shuffledProviders.slice(0, 3)) { // Try top 3 providers
-        try {
-          const content = await getContentByProvider(alternateType, providerId, 1);
-          for (const item of content) {
-            if (!allContent.some(c => c.id === item.id)) {
-              allContent.push(item);
-            }
+      // Try trending content for more variety
+      try {
+        const trendingContent = await getTrendingContent(contentType, 'week');
+        console.log(`Found ${trendingContent.length} trending items`);
+        for (const item of trendingContent) {
+          if (!allContent.some(c => c.id === item.id)) {
+            allContent.push(item);
           }
-        } catch (error) {
-          console.error(`Error fetching alternate content from provider ${providerId}:`, error);
+        }
+      } catch (error) {
+        console.error('Error fetching trending content:', error);
+      }
+      
+      // Try alternate content type if we have multiple types selected
+      if (selectedContentTypes.length > 1) {
+        const alternateType = contentType === 'movie' ? 'tv' : 'movie';
+        console.log(`Trying alternate content type: ${alternateType}`);
+        
+        for (const providerId of shuffledProviders.slice(0, 3)) { // Try top 3 providers
+          try {
+            const content = await getContentByProvider(alternateType, providerId, 1, 'popularity.desc');
+            for (const item of content) {
+              if (!allContent.some(c => c.id === item.id)) {
+                allContent.push(item);
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching alternate content from provider ${providerId}:`, error);
+          }
         }
       }
     }
@@ -600,14 +629,26 @@ const StreamingSlotMachine = () => {
       console.warn(`Failed to fetch content from: ${failedProviders.join(', ')}`);
     }
     
+    // Enhanced shuffling with better randomization
+    const shuffledContent = [...allContent].sort(() => Math.random() - 0.5);
+    console.log(`🎬 Total content fetched: ${shuffledContent.length} items`);
+    console.log(`📊 Content variety: ${new Set(shuffledContent.map(c => 'title' in c ? c.title : c.name)).size} unique titles`);
+    
     setLoadingState('fetchingContent', false);
-    return allContent.sort(() => Math.random() - 0.5); // Shuffle final results
+    return shuffledContent;
   };
 
   // Main spin button function - now much cleaner!
   const spinButton = async () => {
-    if (isSpinning || spinsRemaining <= 0) return;
+    console.log("🎯 SPIN BUTTON CLICKED!");
+    console.log("Current state - isSpinning:", isSpinning, "spinsRemaining:", spinsRemaining);
+    
+    if (isSpinning || spinsRemaining <= 0) {
+      console.log("❌ Button click ignored - isSpinning:", isSpinning, "spinsRemaining:", spinsRemaining);
+      return;
+    }
 
+    console.log("✅ Starting spin process...");
     setIsSpinning(true);
     setButtonScale(0.9);
     setSpinsRemaining((prev: number) => prev - 1);
@@ -668,8 +709,8 @@ const StreamingSlotMachine = () => {
         // Filter out already used content
         const availableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
         
-        // If we have very few available items (less than 3), reset the used content pool
-        if (availableContent.length < 3 && contentWithProviders.length > 5) {
+        // If we have very few available items (less than 5), reset the used content pool
+        if (availableContent.length < 5 && contentWithProviders.length > 10) {
           console.log("Very few available content items, resetting used content pool...");
           resetUsedContent();
           const freshAvailableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
@@ -727,14 +768,16 @@ const StreamingSlotMachine = () => {
       
       // Format and display the content
       updateLoadingProgress('Finalizing recommendation...');
-      console.log("Selected content ID:", selectedContent.id, "Title:", 'title' in selectedContent ? selectedContent.title : selectedContent.name);
+      console.log("🎉 SUCCESS! Selected content ID:", selectedContent.id, "Title:", 'title' in selectedContent ? selectedContent.title : selectedContent.name);
       console.log("Content type:", 'title' in selectedContent ? 'movie' : 'tv');
       console.log("All content length:", allContent.length);
       console.log("Content with providers length:", contentWithProviders.length);
       console.log("Used content IDs:", Array.from(usedContentIds));
       console.log("Available content after filtering:", contentWithProviders.filter(item => !usedContentIds.has(item.id)).length);
       
+      console.log("🔄 Formatting content item...");
       const formattedContent = await formatContentItem(selectedContent, finalProviders);
+      console.log("✅ Content formatted successfully:", formattedContent.title);
 
       // If user selected maturity ratings, enforce filter here as a final guard
       if (selectedRatings.length > 0 && formattedContent.rating) {
@@ -778,12 +821,16 @@ const StreamingSlotMachine = () => {
         }, 1500);
       
     } catch (error) {
-      console.error('Error fetching content:', error);
+      console.error('❌ ERROR in spinButton:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error details:', error);
       
       // Handle different types of errors
       if (error instanceof Error && 'type' in error) {
+        console.log('Handling AppError:', error);
         handleError(error as AppError);
       } else {
+        console.log('Handling generic error:', error);
         handleError(createError(
           ErrorType.API_FAILURE,
           'An unexpected error occurred while fetching content. Please try again.',
@@ -791,6 +838,7 @@ const StreamingSlotMachine = () => {
         ));
       }
       
+      console.log('🔄 Resetting spin state after error');
       setIsSpinning(false);
       setSpinsRemaining((prev: number) => prev + 1);
     }
@@ -1124,7 +1172,7 @@ const StreamingSlotMachine = () => {
                       </>
                     ) : (
                       <div className="w-full h-full bg-slate-800/20 border border-gray-400/30 flex items-center justify-center">
-                        <div className="text-white/20 text-2xl">🎬</div>
+                        <div className="text-white/20 text-2xl">🍿</div>
                       </div>
                     )}
                   </div>
@@ -1163,13 +1211,13 @@ const StreamingSlotMachine = () => {
           
           {/* Type and Rating */}
           <div className="flex items-center gap-3">
-            <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
-              item.type === 'movie' 
-                ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40' 
-                : 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/40'
-            }`}>
-              {item.type === 'movie' ? '🎬 Movie' : '📺 TV Show'}
-            </span>
+              <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
+                item.type === 'movie' 
+                  ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40' 
+                  : 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/40'
+              }`}>
+                {item.type === 'movie' ? 'Movie' : 'TV'}
+              </span>
             {item.rating && (
               <span className="px-3 py-1.5 bg-orange-600/30 text-orange-200 rounded-lg text-sm font-semibold border border-orange-500/40">
                 {item.rating}
@@ -1197,10 +1245,10 @@ const StreamingSlotMachine = () => {
             {item.type === 'movie' && item.runtime ? (
               <span>{item.runtime} min</span>
             ) : item.type === 'tv' && item.numberOfSeasons ? (
-              <span>
-                {item.numberOfSeasons} season{item.numberOfSeasons !== 1 ? 's' : ''}
-                {item.numberOfEpisodes && ` • ${item.numberOfEpisodes} episodes`}
-              </span>
+              <div>
+                <div>{item.numberOfSeasons} season{item.numberOfSeasons !== 1 ? 's' : ''}</div>
+                {item.numberOfEpisodes && <div>{item.numberOfEpisodes} episodes</div>}
+              </div>
             ) : null}
           </div>
           
@@ -1220,50 +1268,76 @@ const StreamingSlotMachine = () => {
         </div>
       </div>
       
-      {/* Spin Button Section */}
-      <div className="max-w-6xl mx-auto px-6 mt-8 text-center">
-        <button
-          onClick={spinButton}
-          disabled={isSpinning || spinsRemaining <= 0}
-          className={`group relative px-16 py-5 rounded-full font-bold text-xl transition-all duration-200 transform focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-slate-900 ${
-            isSpinning || spinsRemaining <= 0
-              ? 'bg-slate-700/60 cursor-not-allowed'
-              : 'bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:from-pink-600 hover:via-purple-600 hover:to-indigo-600 hover:scale-110 shadow-2xl shadow-pink-500/25'
-          }`}
-          style={{ transform: `scale(${buttonScale})` }}
-        >
-          <span className="relative z-10 flex items-center justify-center space-x-3">
-            {isSpinning ? (
-              <>
-                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                <span>Finding...</span>
-              </>
-            ) : (
-              <>
-                <span>Roll the Dice! 🎲</span>
-                <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </>
-            )}
-                    </span>
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        </button>
+      {/* MEGA SPIN BUTTON - THE STAR OF THE SHOW! */}
+      <div className="max-w-6xl mx-auto px-6 mt-12 text-center">
+        <div className="relative">
+          {/* Main MEGA button */}
+          <button
+            onClick={spinButton}
+            disabled={isSpinning || spinsRemaining <= 0}
+            className={`group relative inline-flex items-center justify-center px-16 py-10 rounded-full font-black text-3xl transition-all duration-300 transform focus:outline-none focus:ring-4 focus:ring-purple-400 focus:ring-offset-4 focus:ring-offset-slate-900 border-4 active:scale-95 active:shadow-lg ${
+              isSpinning || spinsRemaining <= 0
+                ? 'bg-slate-700/60 cursor-not-allowed border-gray-600/30'
+                : 'bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:via-pink-500 hover:to-indigo-500 hover:scale-110 shadow-2xl shadow-pink-500/50 hover:shadow-pink-500/80 hover:shadow-3xl border-white/30 hover:border-white/60'
+            }`}
+            style={{ 
+              transform: `scale(${buttonScale})`,
+              background: isSpinning || spinsRemaining <= 0 ? undefined : 'linear-gradient(45deg, #8B5CF6, #EC4899, #6366F1, #8B5CF6)',
+              backgroundSize: '300% 300%',
+              animation: isSpinning || spinsRemaining <= 0 ? 'none' : 'gradientShift 3s ease infinite'
+            }}
+          >
+            {/* Animated background overlay */}
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500 animate-pulse"></div>
+            
+            {/* Button content */}
+            <span className="relative z-10 flex items-center justify-center space-x-4">
+              {isSpinning ? (
+                <>
+                  <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span className="text-4xl font-black tracking-wider bg-gradient-to-r from-yellow-300 to-pink-300 bg-clip-text text-transparent">
+                    FINDING MAGIC...
+                  </span>
+                  <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                </>
+              ) : (
+                <span className="text-4xl font-black tracking-wider bg-gradient-to-r from-yellow-300 to-pink-300 bg-clip-text text-transparent">
+                  SHOW ME WHAT TO WATCH!
+                </span>
+              )}
+            </span>
+            
+          </button>
+          
+          {/* Floating particles effect - only when spinning */}
+          {isSpinning && (
+            <>
+              <div className="absolute -top-6 -left-6 w-4 h-4 bg-yellow-400 rounded-full animate-ping opacity-70"></div>
+              <div className="absolute -top-4 -right-8 w-3 h-3 bg-pink-400 rounded-full animate-ping opacity-70" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute -bottom-6 -left-4 w-3 h-3 bg-purple-400 rounded-full animate-ping opacity-70" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute -bottom-4 -right-6 w-4 h-4 bg-indigo-400 rounded-full animate-ping opacity-70" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute top-2 left-1/2 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-60" style={{ animationDelay: '2s' }}></div>
+              <div className="absolute bottom-2 right-1/2 w-2 h-2 bg-orange-400 rounded-full animate-ping opacity-60" style={{ animationDelay: '2.5s' }}></div>
+            </>
+          )}
+        </div>
 
-        {/* Spins Counter and Reset Button */}
-        <div className="mt-4">
+        {/* MEGA Spins Counter and Reset Button */}
+        <div className="mt-8">
           {spinsRemaining > 0 ? (
-            <div className="flex items-center justify-center space-x-2 text-gray-400">
-              <div className="flex space-x-1">
+            <div className="flex items-center justify-center space-x-4 text-white">
+              <div className="flex space-x-2">
                 {[...Array(spinsRemaining)].map((_, i) => (
-                  <div key={i} className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" style={{ animationDelay: `${i * 200}ms` }}></div>
+                  <div key={i} className="w-4 h-4 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse shadow-lg" style={{ animationDelay: `${i * 200}ms` }}></div>
                 ))}
               </div>
-              <span className="text-sm">{spinsRemaining} spin{spinsRemaining !== 1 ? 's' : ''} remaining</span>
+              <span className="text-xl font-bold bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
+                {spinsRemaining} SPIN{spinsRemaining !== 1 ? 'S' : ''} REMAINING
+              </span>
             </div>
           ) : (
-            <div className="flex flex-col items-center space-y-2">
-              <span className="text-red-400 text-sm font-medium">No more spins left!</span>
+            <div className="flex flex-col items-center space-y-4">
+              <span className="text-2xl font-bold text-red-400 animate-pulse">NO MORE SPINS LEFT!</span>
               <button
                 onClick={() => {
                   setSpinsRemaining(3);
@@ -1271,9 +1345,9 @@ const StreamingSlotMachine = () => {
                   setCurrentContent(null);
                   setSuggestedItems([null, null, null]);
                 }}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-medium rounded-full hover:from-purple-700 hover:to-pink-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 text-white text-lg font-bold rounded-full hover:from-purple-500 hover:via-pink-500 hover:to-indigo-500 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-purple-400 focus:ring-offset-4 focus:ring-offset-slate-900 transform hover:scale-105 shadow-2xl border-2 border-white/20 hover:border-white/40"
               >
-                🔄 Get Fresh Spins
+                🔄 GET FRESH SPINS!
               </button>
             </div>
           )}
