@@ -315,37 +315,37 @@ const StreamingSlotMachine = () => {
         }
       }
       
-      // Strategy 3: Try popular content for this provider
+      // Strategy 3: Try trending content as fallback
       if (allContent.length < 5) {
         try {
-        console.log(`Strategy 3: Popular content for provider ${providerId}`);
-          const popularContent = await getPopularByProvider(providerId, 1);
+          console.log(`Strategy 3: Trending content as fallback`);
+          const trendingContent = await getTrendingContent(contentType, 'week');
           
-          for (const item of popularContent) {
+          for (const item of trendingContent) {
             if (!allContent.some(c => c.id === item.id)) {
               allContent.push(item);
             }
           }
         } catch (error) {
-        lastError = error as Error;
-        console.error(`Strategy 3 error:`, error);
+          lastError = error as Error;
+          console.error(`Strategy 3 error:`, error);
         }
       }
       
-      // Strategy 4: Try random content without provider filtering
+      // Strategy 4: Try trending content without provider filtering
       if (allContent.length < 5) {
         try {
-        console.log(`Strategy 4: Random content without provider filtering`);
-          const randomContent = await getRandomContent(contentType, undefined, 1);
+          console.log(`Strategy 4: Trending content without provider filtering`);
+          const trendingContent = await getTrendingContent(contentType, 'day');
           
-          for (const item of randomContent) {
+          for (const item of trendingContent) {
             if (!allContent.some(c => c.id === item.id)) {
               allContent.push(item);
             }
           }
         } catch (error) {
-        lastError = error as Error;
-        console.error(`Strategy 4 error:`, error);
+          lastError = error as Error;
+          console.error(`Strategy 4 error:`, error);
         }
       }
       
