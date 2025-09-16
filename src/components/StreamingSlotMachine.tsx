@@ -355,8 +355,8 @@ const StreamingSlotMachine = () => {
       // Strategy 5: Last resort - get trending content
       if (allContent.length < 5) {
         try {
-        console.log(`Strategy 5: Trending content (last resort)`);
-          const trendingContent = await getTrendingContent(1);
+          console.log(`Strategy 5: Trending content (last resort)`);
+          const trendingContent = await getTrendingContent(contentType, 'week');
           
           for (const item of trendingContent) {
             if (!allContent.some(c => c.id === item.id)) {
@@ -364,8 +364,9 @@ const StreamingSlotMachine = () => {
             }
           }
         } catch (error) {
-        lastError = error as Error;
-        console.error(`Strategy 5 error:`, error);
+          lastError = error as Error;
+          console.error(`Strategy 5 error:`, error);
+        }
       }
     }
     
