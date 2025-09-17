@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
     const queryString = new URLSearchParams(query).toString();
     const url = `${BASE_URL}${path}?${queryString}`;
 
+    console.log(`Making TMDB API request to: ${path}`);
+
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${TMDB_ACCESS_TOKEN}`,
@@ -47,16 +49,44 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error(`TMDB API error for path ${path}:`, errorData);
-      return NextResponse.json({ error: 'TMDB API failed', details: errorData }, { status: response.status });
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { message: 'Unknown error', status: response.status };
+      }
+      
+      console.error(`TMDB API error for path ${path}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData
+      });
+      
+      // Return a more user-friendly error for 404s
+      if (response.status === 404) {
+        return NextResponse.json({ 
+          error: 'Content not found', 
+          message: 'The requested content could not be found',
+          status: 404 
+        }, { status: 404 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'TMDB API failed', 
+        message: errorData.message || 'API request failed',
+        status: response.status 
+      }, { status: response.status });
     }
 
     const data = await response.json();
+    console.log(`Successfully fetched data for path: ${path}`);
     return NextResponse.json(data);
   } catch (error) {
-    console.error(`Error in TMDB API route:`, error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error(`Error in TMDB API route for path ${request.url}:`, error);
+    return NextResponse.json({ 
+      error: 'Internal Server Error',
+      message: 'An unexpected error occurred while processing your request'
+    }, { status: 500 });
   }
 }
 

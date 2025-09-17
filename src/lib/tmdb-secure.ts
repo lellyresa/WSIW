@@ -64,19 +64,36 @@ async function callTMDBAPI<T>(endpoint: string, params: Record<string, any> = {}
   const queryString = new URLSearchParams(params).toString();
   const url = `/api/tmdb?path=${encodeURIComponent(endpoint)}${queryString ? '&' + queryString : ''}`;
   
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'API request failed');
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { error: 'Unknown error', message: 'Failed to parse error response' };
+      }
+      
+      console.error(`API call failed for ${endpoint}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData
+      });
+      
+      throw new Error(errorData.message || errorData.error || `API request failed with status ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error(`Network error for ${endpoint}:`, error);
+    throw new Error(`Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  return response.json();
 }
 
 // Export all the same functions as the original tmdb.ts but using secure API calls
