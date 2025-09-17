@@ -481,11 +481,12 @@ const StreamingSlotMachine = () => {
       : 'Unknown';
 
     // Fetch all additional data in parallel
-    const [details, credits, keywords, tvDetails] = await Promise.all([
+    const [details, credits, keywords, tvDetails, contentRating] = await Promise.all([
       getContentDetails(content),
       getCredits(contentType, content.id),
       getKeywords(contentType, content.id),
-      !isMovie ? getTVDetails(content.id) : Promise.resolve(null)
+      !isMovie ? getTVDetails(content.id) : Promise.resolve(null),
+      getContentRating(contentType, content.id)
     ]);
 
     // Extract cast names (top 3)
@@ -513,7 +514,7 @@ const StreamingSlotMachine = () => {
       title: isMovie ? content.title || 'Unknown Title' : content.name || 'Unknown Title',
       type: contentType,
       genre: genreName,
-      rating: details.rating,
+      rating: contentRating,
       providers,
       posterPath: content.poster_path,
       overview: content.overview || "No description available.",

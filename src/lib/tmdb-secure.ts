@@ -60,12 +60,15 @@ interface Keyword {
 
 // Generic API call function
 async function callTMDBAPI<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
-  const response = await fetch('/api/tmdb', {
-    method: 'POST',
+  // Build query string for GET request
+  const queryString = new URLSearchParams(params).toString();
+  const url = `/api/tmdb?path=${encodeURIComponent(endpoint)}${queryString ? '&' + queryString : ''}`;
+  
+  const response = await fetch(url, {
+    method: 'GET',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ endpoint, params }),
   });
 
   if (!response.ok) {
@@ -112,11 +115,22 @@ export const getProviders = async (type: 'movie' | 'tv', contentId: number): Pro
 
 export const getContentRating = async (type: 'movie' | 'tv', contentId: number): Promise<string | null> => {
   try {
+    // Try the content_ratings endpoint first
     const response = await callTMDBAPI<any>(`/${type}/${contentId}/content_ratings`);
     const usRating = response.results?.find((r: any) => r.iso_3166_1 === 'US');
-    return usRating?.rating || null;
+    if (usRating?.rating) {
+      return usRating.rating;
+    }
   } catch (error) {
-    console.error('Error fetching content rating:', error);
+    console.log(`Content ratings endpoint failed for ${type} ${contentId}, trying alternative...`);
+  }
+
+  try {
+    // Fallback: try to get rating from the main content details
+    const contentDetails = await callTMDBAPI<any>(`/${type}/${contentId}`);
+    return contentDetails.certification || contentDetails.rating || null;
+  } catch (error) {
+    console.error(`Error fetching content rating for ${type} ${contentId}:`, error);
     return null;
   }
 };
