@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 
-// Generic TMDB API proxy
-export async function POST(request: NextRequest) {
-  // Check environment variables inside the handler, not at module level
+// Helper function to check credentials
+function checkCredentials() {
   const TMDB_API_KEY = process.env.TMDB_API_KEY;
   const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN;
 
@@ -14,6 +13,59 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  return null;
+}
+
+// Generic TMDB API proxy - GET handler
+export async function GET(request: NextRequest) {
+  const credentialCheck = checkCredentials();
+  if (credentialCheck) return credentialCheck;
+
+  const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN!;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const path = searchParams.get('path');
+    const query = Object.fromEntries(searchParams.entries());
+    delete query.path; // Remove path from query params
+
+    if (!path) {
+      return NextResponse.json({ error: 'Missing TMDB API path' }, { status: 400 });
+    }
+
+    const queryString = new URLSearchParams(query).toString();
+    const url = `${BASE_URL}${path}?${queryString}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${TMDB_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      next: {
+        revalidate: 3600, // Cache for 1 hour
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`TMDB API error for path ${path}:`, errorData);
+      return NextResponse.json({ error: 'TMDB API failed', details: errorData }, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error(`Error in TMDB API route:`, error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// Generic TMDB API proxy - POST handler
+export async function POST(request: NextRequest) {
+  const credentialCheck = checkCredentials();
+  if (credentialCheck) return credentialCheck;
+
+  const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN!;
 
   try {
     const { endpoint, params = {} } = await request.json();
