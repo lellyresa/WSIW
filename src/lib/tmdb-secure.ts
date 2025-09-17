@@ -136,6 +136,7 @@ export const getContentRating = async (type: 'movie' | 'tv', contentId: number):
     const response = await callTMDBAPI<any>(`/${type}/${contentId}/content_ratings`);
     const usRating = response.results?.find((r: any) => r.iso_3166_1 === 'US');
     if (usRating?.rating) {
+      console.log(`Found rating for ${type} ${contentId}: ${usRating.rating}`);
       return usRating.rating;
     }
   } catch (error) {
@@ -145,11 +146,20 @@ export const getContentRating = async (type: 'movie' | 'tv', contentId: number):
   try {
     // Fallback: try to get rating from the main content details
     const contentDetails = await callTMDBAPI<any>(`/${type}/${contentId}`);
-    return contentDetails.certification || contentDetails.rating || null;
+    const rating = contentDetails.certification || contentDetails.rating || null;
+    if (rating) {
+      console.log(`Found fallback rating for ${type} ${contentId}: ${rating}`);
+      return rating;
+    }
   } catch (error) {
     console.error(`Error fetching content rating for ${type} ${contentId}:`, error);
-    return null;
   }
+
+  // If all else fails, return null to be safe - don't guess ratings
+  console.log(`No rating found for ${type} ${contentId} - will be filtered out if rating filter is active`);
+
+  console.log(`No rating found for ${type} ${contentId}`);
+  return null;
 };
 
 export const getContentDetails = async (content: TMDBMovie | TMDBShow): Promise<any> => {

@@ -410,8 +410,13 @@ const StreamingSlotMachine = () => {
           if (selectedRatings.length > 0) {
             try {
               const rating = await getContentRating('title' in item ? 'movie' : 'tv', item.id);
+              console.log(`Content ${item.id} (${'title' in item ? item.title : item.name}) has rating: ${rating}`);
               passesRating = rating ? selectedRatings.includes(rating) : false;
+              if (!passesRating && rating) {
+                console.log(`Content ${item.id} filtered out due to rating ${rating} not in selected ratings: ${selectedRatings.join(', ')}`);
+              }
             } catch (e) {
+              console.log(`Error getting rating for content ${item.id}:`, e);
               passesRating = false;
             }
           }
@@ -783,15 +788,24 @@ const StreamingSlotMachine = () => {
       console.log("✅ Content formatted successfully:", formattedContent.title);
 
       // If user selected maturity ratings, enforce filter here as a final guard
-      if (selectedRatings.length > 0 && formattedContent.rating) {
-        const allowed = selectedRatings.includes(formattedContent.rating);
-        if (!allowed) {
-          // Skip and try again quickly
-          console.log('Filtered out by maturity rating:', formattedContent.rating);
+      if (selectedRatings.length > 0) {
+        if (!formattedContent.rating) {
+          console.log('Content has no rating, filtering out:', formattedContent.title);
           setIsSpinning(false);
           setSpinsRemaining((prev: number) => prev + 1);
           return;
         }
+        
+        const allowed = selectedRatings.includes(formattedContent.rating);
+        if (!allowed) {
+          // Skip and try again quickly
+          console.log(`Final filter: Content "${formattedContent.title}" with rating "${formattedContent.rating}" not in selected ratings: ${selectedRatings.join(', ')}`);
+          setIsSpinning(false);
+          setSpinsRemaining((prev: number) => prev + 1);
+          return;
+        }
+        
+        console.log(`Content "${formattedContent.title}" with rating "${formattedContent.rating}" passed final rating filter`);
       }
       
       // Add the selected content ID to used set
