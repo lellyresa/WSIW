@@ -49,6 +49,7 @@ interface ContentItem {
 interface ContentWithProviders {
   actualProviders: string[];
   prefetchedRating?: string | null;
+  passesRatingFilter?: boolean;
   id: number;
   title?: string;
   name?: string;
@@ -78,6 +79,18 @@ interface AppError {
   type: ErrorType;
   message: string;
   details?: string;
+}
+
+class StreamingAppError extends Error implements AppError {
+  type: ErrorType;
+  details?: string;
+
+  constructor(type: ErrorType, message: string, details?: string) {
+    super(message);
+    this.name = 'StreamingAppError';
+    this.type = type;
+    this.details = details;
+  }
 }
 
 // Define streaming services with their colors
@@ -222,11 +235,129 @@ const StreamingSlotMachine: React.FC = () => {
     return selected;
   };
 
-  const createError = (type: ErrorType, message: string, details?: string): AppError => ({
-    type,
-    message,
-    details
-  });
+  const chooseContent = async (
+    usedIdsSnapshot: Set<number>,
+    allContent: (TMDBMovie | TMDBShow)[],
+    contentWithProviders: ContentWithProviders[],
+    options: { enforceRating: boolean }
+  ): Promise<{
+    formattedContent: ContentItem | null;
+    selectedContent: TMDBMovie | TMDBShow | null;
+    providersForContent: string[];
+  }> => {
+    const seenThisSpin = new Set<number>();
+    let hasResetUsedContent = false;
+    let formattedContent: ContentItem | null = null;
+    let selectedContent: TMDBMovie | TMDBShow | null = null;
+    let providersForContent: string[] = [];
+    const enforceRating = options.enforceRating && selectedRatings.length > 0;
+
+    for (let attempt = 0; attempt < 16 && !formattedContent; attempt++) {
+      let candidate: TMDBMovie | TMDBShow | null = null;
+      let candidateProviders: string[] = [];
+      let ratingHint: string | null | undefined = undefined;
+
+      if (contentWithProviders.length > 0) {
+        const providerPool = contentWithProviders.filter(item => {
+          if (usedIdsSnapshot.has(item.id) || seenThisSpin.has(item.id)) {
+            return false;
+          }
+
+          if (enforceRating && item.passesRatingFilter === false) {
+            return false;
+          }
+
+          return true;
+        });
+
+        if (providerPool.length === 0) {
+          if (!hasResetUsedContent && contentWithProviders.length > 10) {
+            console.log('Resetting used content due to exhausted provider matches');
+            resetUsedContent();
+            usedIdsSnapshot.clear();
+            hasResetUsedContent = true;
+            continue;
+          }
+        } else {
+          const prioritizedPool = enforceRating
+            ? providerPool
+            : [...providerPool].sort((a, b) => {
+                const aScore = a.passesRatingFilter === false ? 1 : 0;
+                const bScore = b.passesRatingFilter === false ? 1 : 0;
+                return aScore - bScore;
+              });
+
+          const selectedContentWithProviders = selectBalancedContent(prioritizedPool);
+          candidate = selectedContentWithProviders as TMDBMovie | TMDBShow;
+          candidateProviders = selectedContentWithProviders.actualProviders;
+          ratingHint = selectedContentWithProviders.prefetchedRating;
+          seenThisSpin.add(selectedContentWithProviders.id);
+        }
+      }
+
+      if (!candidate) {
+        const fallbackPool = allContent.filter(item => !usedIdsSnapshot.has(item.id) && !seenThisSpin.has(item.id));
+
+        if (fallbackPool.length === 0) {
+          if (!hasResetUsedContent) {
+            console.log('Resetting used content due to exhausted fallback options');
+            resetUsedContent();
+            usedIdsSnapshot.clear();
+            hasResetUsedContent = true;
+            continue;
+          }
+          break;
+        }
+
+        const randomIndex = Math.floor(Math.random() * fallbackPool.length);
+        candidate = fallbackPool[randomIndex];
+        seenThisSpin.add(candidate.id);
+
+        try {
+          const providers = await getProviders(
+            'title' in candidate ? 'movie' : 'tv',
+            candidate.id
+          );
+          candidateProviders = formatProviders(providers);
+        } catch (error) {
+          console.error('Error fetching providers for fallback candidate:', error);
+          candidateProviders = [];
+        }
+      }
+
+      if (!candidate) {
+        continue;
+      }
+
+      updateLoadingProgress('Finalizing recommendation...');
+      console.log('Evaluating candidate:', 'title' in candidate ? candidate.title : candidate.name, '(ID:', candidate.id, ')');
+
+      try {
+        const candidateContent = await formatContentItem(candidate, candidateProviders, { ratingHint });
+
+        if (enforceRating) {
+          if (!candidateContent.rating || !selectedRatings.includes(candidateContent.rating)) {
+            console.log(`Skipping candidate ${candidateContent.title} due to rating mismatch: ${candidateContent.rating}`);
+            continue;
+          }
+        }
+
+        formattedContent = candidateContent;
+        selectedContent = candidate;
+        providersForContent = candidateProviders;
+      } catch (formatError) {
+        console.error('Error formatting candidate content:', formatError);
+        continue;
+      }
+    }
+
+    return { formattedContent, selectedContent, providersForContent };
+  };
+
+
+  const createError = (type: ErrorType, message: string, details?: string): StreamingAppError => (
+    new StreamingAppError(type, message, details)
+  );
 
   // Enhanced loading state management
   const setLoadingState = (key: keyof typeof loadingStates, value: boolean) => {
@@ -423,15 +554,21 @@ const StreamingSlotMachine: React.FC = () => {
     
     const contentWithProviders: ContentWithProviders[] = [];
     const itemsToInspect = allContent.slice(0, MAX_PROVIDER_LOOKUPS);
+    const seenIds = new Set<number>();
+    let passingMatches = 0;
 
     await runWithConcurrency(itemsToInspect, PROVIDER_CONCURRENCY, async (item) => {
-      if (contentWithProviders.length >= PROVIDER_MATCH_TARGET) {
+      if (passingMatches >= PROVIDER_MATCH_TARGET) {
         return;
       }
 
       const contentType: 'movie' | 'tv' = 'title' in item ? 'movie' : 'tv';
 
       try {
+        if (seenIds.has(item.id)) {
+          return;
+        }
+
         const providers = await getProviders(contentType, item.id);
         const availableProviders = formatProviders(providers);
         const matchingProviders = availableProviders.filter(provider =>
@@ -443,33 +580,40 @@ const StreamingSlotMachine: React.FC = () => {
         }
 
         let rating: string | null | undefined = undefined;
+        let passesRating = true;
 
         if (selectedRatings.length > 0) {
           try {
             rating = await getContentRating(contentType, item.id);
 
             if (!rating || !selectedRatings.includes(rating)) {
-              console.log(`Content ${item.id} filtered out due to rating ${rating}`);
-              return;
+              passesRating = false;
             }
           } catch (error) {
             console.log(`Error getting rating for content ${item.id}:`, error);
-            return;
+            passesRating = false;
           }
         }
+
+        seenIds.add(item.id);
 
         contentWithProviders.push({
           ...item,
           actualProviders: matchingProviders,
-          prefetchedRating: rating
+          prefetchedRating: rating,
+          passesRatingFilter: passesRating
         });
+
+        if (passesRating) {
+          passingMatches += 1;
+        }
       } catch (error) {
         console.error('Error checking providers:', error);
       }
     });
 
     setLoadingState('checkingProviders', false);
-    return contentWithProviders.slice(0, PROVIDER_MATCH_TARGET);
+    return contentWithProviders;
   };
 
   // Get additional content details (runtime, seasons, rating)
@@ -747,93 +891,19 @@ const StreamingSlotMachine: React.FC = () => {
       const contentWithProviders = await findContentWithMatchingProviders(allContent);
 
       const usedIdsSnapshot = new Set(usedContentIds);
-      
-      const seenThisSpin = new Set<number>();
-      let hasResetUsedContent = false;
-      let formattedContent: ContentItem | null = null;
-      let selectedContent: TMDBMovie | TMDBShow | null = null;
-      let providersForContent: string[] = [];
 
-      for (let attempt = 0; attempt < 12 && !formattedContent; attempt++) {
-        let candidate: TMDBMovie | TMDBShow | null = null;
-        let candidateProviders: string[] = [];
-        let ratingHint: string | null | undefined = undefined;
+      let selectionResult = await chooseContent(usedIdsSnapshot, allContent, contentWithProviders, {
+        enforceRating: selectedRatings.length > 0,
+      });
 
-        if (contentWithProviders.length > 0) {
-          const availableContent = contentWithProviders.filter(item => !usedIdsSnapshot.has(item.id) && !seenThisSpin.has(item.id));
-
-          if (availableContent.length === 0) {
-            if (!hasResetUsedContent && contentWithProviders.length > 10) {
-              console.log("Resetting used content due to exhausted provider matches");
-              resetUsedContent();
-              usedIdsSnapshot.clear();
-              hasResetUsedContent = true;
-              continue;
-            }
-          } else {
-            const selectedContentWithProviders = selectBalancedContent(availableContent);
-            candidate = selectedContentWithProviders as TMDBMovie | TMDBShow;
-            candidateProviders = selectedContentWithProviders.actualProviders;
-            ratingHint = selectedContentWithProviders.prefetchedRating;
-            seenThisSpin.add(selectedContentWithProviders.id);
-          }
-        }
-
-        if (!candidate) {
-          const fallbackPool = allContent.filter(item => !usedIdsSnapshot.has(item.id) && !seenThisSpin.has(item.id));
-
-          if (fallbackPool.length === 0) {
-            if (!hasResetUsedContent) {
-              console.log("Resetting used content due to exhausted fallback options");
-              resetUsedContent();
-              usedIdsSnapshot.clear();
-              hasResetUsedContent = true;
-              continue;
-            }
-            break;
-          }
-
-          const randomIndex = Math.floor(Math.random() * fallbackPool.length);
-          candidate = fallbackPool[randomIndex];
-          seenThisSpin.add(candidate.id);
-
-          try {
-            const providers = await getProviders(
-              'title' in candidate ? 'movie' : 'tv',
-              candidate.id
-            );
-            candidateProviders = formatProviders(providers);
-          } catch (error) {
-            console.error('Error fetching providers for fallback candidate:', error);
-            candidateProviders = [];
-          }
-        }
-
-        if (!candidate) {
-          continue;
-        }
-
-        updateLoadingProgress('Finalizing recommendation...');
-        console.log("Evaluating candidate:", 'title' in candidate ? candidate.title : candidate.name, "(ID:", candidate.id, ")");
-
-        try {
-          const candidateContent = await formatContentItem(candidate, candidateProviders, { ratingHint });
-
-          if (selectedRatings.length > 0) {
-            if (!candidateContent.rating || !selectedRatings.includes(candidateContent.rating)) {
-              console.log(`Skipping candidate ${candidateContent.title} due to rating mismatch: ${candidateContent.rating}`);
-              continue;
-            }
-          }
-
-          formattedContent = candidateContent;
-          selectedContent = candidate;
-          providersForContent = candidateProviders;
-        } catch (formatError) {
-          console.error('Error formatting candidate content:', formatError);
-          continue;
-        }
+      if ((!selectionResult.formattedContent || !selectionResult.selectedContent) && selectedRatings.length > 0) {
+        console.log('No candidates satisfied the rating filter. Retrying without the rating constraint for this spin.');
+        selectionResult = await chooseContent(usedIdsSnapshot, allContent, contentWithProviders, {
+          enforceRating: false,
+        });
       }
+
+      const { formattedContent, selectedContent, providersForContent } = selectionResult;
 
       if (!formattedContent || !selectedContent) {
         throw createError(
@@ -888,10 +958,12 @@ const StreamingSlotMachine: React.FC = () => {
       console.error('❌ ERROR in spinButton:', error);
       console.error('Error type:', typeof error);
       console.error('Error details:', error);
-      
-      // Handle different types of errors
-      if (error instanceof Error && 'type' in error) {
-        console.log('Handling AppError:', error);
+
+      if (error instanceof StreamingAppError) {
+        console.log('Handling StreamingAppError:', error);
+        handleError(error);
+      } else if (error && typeof error === 'object' && 'type' in (error as Record<string, unknown>)) {
+        console.log('Handling AppError-like object:', error);
         handleError(error as AppError);
       } else {
         console.log('Handling generic error:', error);
@@ -901,7 +973,7 @@ const StreamingSlotMachine: React.FC = () => {
           error instanceof Error ? error.message : 'Unknown error'
         ));
       }
-      
+
       console.log('🔄 Resetting spin state after error');
       setIsSpinning(false);
       setSpinsRemaining((prev: number) => prev + 1);
