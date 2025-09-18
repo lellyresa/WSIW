@@ -132,12 +132,23 @@ export const getProviders = async (type: 'movie' | 'tv', contentId: number): Pro
 
 export const getContentRating = async (type: 'movie' | 'tv', contentId: number): Promise<string | null> => {
   try {
-    // Try the content_ratings endpoint first
-    const response = await callTMDBAPI<any>(`/${type}/${contentId}/content_ratings`);
-    const usRating = response.results?.find((r: any) => r.iso_3166_1 === 'US');
-    if (usRating?.rating) {
-      console.log(`Found rating for ${type} ${contentId}: ${usRating.rating}`);
-      return usRating.rating;
+    if (type === 'tv') {
+      // TV shows expose country ratings through the content_ratings endpoint
+      const response = await callTMDBAPI<any>(`/${type}/${contentId}/content_ratings`);
+      const usRating = response.results?.find((r: any) => r.iso_3166_1 === 'US');
+      if (usRating?.rating) {
+        console.log(`Found rating for ${type} ${contentId}: ${usRating.rating}`);
+        return usRating.rating;
+      }
+    } else {
+      // Movies store certifications on the release_dates endpoint
+      const response = await callTMDBAPI<any>(`/movie/${contentId}/release_dates`);
+      const usRelease = response.results?.find((r: any) => r.iso_3166_1 === 'US');
+      const certifiedRelease = usRelease?.release_dates?.find((item: any) => item.certification);
+      if (certifiedRelease?.certification) {
+        console.log(`Found rating for movie ${contentId}: ${certifiedRelease.certification}`);
+        return certifiedRelease.certification;
+      }
     }
   } catch (error) {
     console.log(`Content ratings endpoint failed for ${type} ${contentId}, trying alternative...`);
