@@ -48,6 +48,7 @@ interface ContentItem {
 // Add a new interface for content with actual providers
 interface ContentWithProviders {
   actualProviders: string[];
+  prefetchedRating?: string | null;
   id: number;
   title?: string;
   name?: string;
@@ -383,6 +384,33 @@ const StreamingSlotMachine = () => {
     return allContent.sort(() => Math.random() - 0.5); // Shuffle for randomness
   };
 
+  const MAX_PROVIDER_LOOKUPS = 24;
+  const PROVIDER_MATCH_TARGET = 8;
+  const PROVIDER_CONCURRENCY = 4;
+
+  const runWithConcurrency = async <T>(items: T[], limit: number, handler: (item: T, index: number) => Promise<void>) => {
+    if (items.length === 0) {
+      return;
+    }
+
+    let currentIndex = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, () =>
+      (async () => {
+        while (true) {
+          const index = currentIndex;
+          if (index >= items.length) {
+            break;
+          }
+
+          currentIndex += 1;
+          await handler(items[index], index);
+        }
+      })()
+    );
+
+    await Promise.all(workers);
+  };
+
   // Process content to find items with matching providers
   const findContentWithMatchingProviders = async (allContent: (TMDBMovie | TMDBShow)[]): Promise<ContentWithProviders[]> => {
     setLoadingState('checkingProviders', true);
@@ -390,57 +418,60 @@ const StreamingSlotMachine = () => {
     updateLoadingMessage('Checking streaming availability...');
     
     const contentWithProviders: ContentWithProviders[] = [];
-    
-      for (let i = 0; i < Math.min(allContent.length, 20) && contentWithProviders.length < 5; i++) {
-        const item = allContent[i];
-        
-        try {
-          const providers = await getProviders(
-            'title' in item ? 'movie' : 'tv', 
-            item.id
-          );
-          
-          const availableProviders = formatProviders(providers);
-          const matchingProviders = availableProviders.filter(provider => 
-            selectedServices.includes(provider)
-          );
-          
-          // Apply optional maturity rating filter
-          let passesRating = true;
-          if (selectedRatings.length > 0) {
-            try {
-              const rating = await getContentRating('title' in item ? 'movie' : 'tv', item.id);
-              console.log(`Content ${item.id} (${'title' in item ? item.title : item.name}) has rating: ${rating}`);
-              passesRating = rating ? selectedRatings.includes(rating) : false;
-              if (!passesRating && rating) {
-                console.log(`Content ${item.id} filtered out due to rating ${rating} not in selected ratings: ${selectedRatings.join(', ')}`);
-              }
-            } catch (e) {
-              console.log(`Error getting rating for content ${item.id}:`, e);
-              passesRating = false;
-            }
-          }
+    const itemsToInspect = allContent.slice(0, MAX_PROVIDER_LOOKUPS);
 
-          if (matchingProviders.length > 0 && passesRating) {
-            contentWithProviders.push({
-              ...item,
-              actualProviders: matchingProviders
-            });
-          }
-        } catch (error) {
-          console.error('Error checking providers:', error);
-        }
+    await runWithConcurrency(itemsToInspect, PROVIDER_CONCURRENCY, async (item) => {
+      if (contentWithProviders.length >= PROVIDER_MATCH_TARGET) {
+        return;
       }
-      
+
+      const contentType: 'movie' | 'tv' = 'title' in item ? 'movie' : 'tv';
+
+      try {
+        const providers = await getProviders(contentType, item.id);
+        const availableProviders = formatProviders(providers);
+        const matchingProviders = availableProviders.filter(provider =>
+          selectedServices.includes(provider)
+        );
+
+        if (matchingProviders.length === 0) {
+          return;
+        }
+
+        let rating: string | null | undefined = undefined;
+
+        if (selectedRatings.length > 0) {
+          try {
+            rating = await getContentRating(contentType, item.id);
+
+            if (!rating || !selectedRatings.includes(rating)) {
+              console.log(`Content ${item.id} filtered out due to rating ${rating}`);
+              return;
+            }
+          } catch (error) {
+            console.log(`Error getting rating for content ${item.id}:`, error);
+            return;
+          }
+        }
+
+        contentWithProviders.push({
+          ...item,
+          actualProviders: matchingProviders,
+          prefetchedRating: rating
+        });
+      } catch (error) {
+        console.error('Error checking providers:', error);
+      }
+    });
+
     setLoadingState('checkingProviders', false);
-    return contentWithProviders;
+    return contentWithProviders.slice(0, PROVIDER_MATCH_TARGET);
   };
 
   // Get additional content details (runtime, seasons, rating)
-  const getContentDetails = async (content: TMDBMovie | TMDBShow): Promise<{
+  const fetchAdditionalDetails = async (content: TMDBMovie | TMDBShow): Promise<{
     runtime?: number;
     numberOfSeasons?: number;
-    rating: string | null;
   }> => {
     setLoadingState('gettingDetails', true);
     updateLoadingProgress('Getting content details...');
@@ -449,36 +480,33 @@ const StreamingSlotMachine = () => {
     const isMovie = 'title' in content;
     let runtime: number | undefined;
     let numberOfSeasons: number | undefined;
-    let rating: string | null = null;
 
     try {
-      // Get runtime and seasons
+      const details = await getContentDetails(content);
+
       if (isMovie) {
-        const movieDetails = await fetch(
-          `https://api.themoviedb.org/3/movie/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
-        ).then(res => res.json());
-            runtime = movieDetails.runtime;
-        } else {
-        const tvDetails = await fetch(
-          `https://api.themoviedb.org/3/tv/${content.id}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
-        ).then(res => res.json());
-            numberOfSeasons = tvDetails.number_of_seasons;
-            runtime = tvDetails.episode_run_time?.[0];
-        }
-        
-        // Get content rating
-      rating = await getContentRating(isMovie ? 'movie' : 'tv', content.id);
-        } catch (error) {
+        runtime = details.runtime;
+      } else {
+        numberOfSeasons = details.number_of_seasons;
+        runtime = Array.isArray(details.episode_run_time)
+          ? details.episode_run_time[0]
+          : details.episode_run_time;
+      }
+    } catch (error) {
       console.error('Error fetching content details:', error);
     } finally {
       setLoadingState('gettingDetails', false);
     }
 
-    return { runtime, numberOfSeasons, rating };
+    return { runtime, numberOfSeasons };
   };
 
   // Format content item for display
-  const formatContentItem = async (content: TMDBMovie | TMDBShow, providers: string[]): Promise<ContentItem> => {
+  const formatContentItem = async (
+    content: TMDBMovie | TMDBShow,
+    providers: string[],
+    options: { ratingHint?: string | null } = {}
+  ): Promise<ContentItem> => {
     const isMovie = 'title' in content;
     const contentType = isMovie ? 'movie' : 'tv';
     const genreName = content.genre_ids && content.genre_ids.length > 0
@@ -486,12 +514,16 @@ const StreamingSlotMachine = () => {
       : 'Unknown';
 
     // Fetch all additional data in parallel
+    const ratingPromise = options.ratingHint !== undefined
+      ? Promise.resolve(options.ratingHint)
+      : getContentRating(contentType, content.id);
+
     const [details, credits, keywords, tvDetails, contentRating] = await Promise.all([
-      getContentDetails(content),
+      fetchAdditionalDetails(content),
       getCredits(contentType, content.id),
       getKeywords(contentType, content.id),
       !isMovie ? getTVDetails(content.id) : Promise.resolve(null),
-      getContentRating(contentType, content.id)
+      ratingPromise
     ]);
 
     // Extract cast names (top 3)
@@ -709,110 +741,121 @@ const StreamingSlotMachine = () => {
       
       // Try to find content with matching providers
       const contentWithProviders = await findContentWithMatchingProviders(allContent);
-      
-      let selectedContent: TMDBMovie | TMDBShow;
-      let finalProviders: string[];
-      
-      if (contentWithProviders.length > 0) {
-        // Filter out already used content
-        const availableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
-        
-        // If we have very few available items (less than 5), reset the used content pool
-        if (availableContent.length < 5 && contentWithProviders.length > 10) {
-          console.log("Very few available content items, resetting used content pool...");
-          resetUsedContent();
-          const freshAvailableContent = contentWithProviders.filter(item => !usedContentIds.has(item.id));
-          if (freshAvailableContent.length > 0) {
-            // Prioritize content from less-represented providers
-            const selectedContentWithProviders = selectBalancedContent(freshAvailableContent);
-            selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
-            finalProviders = selectedContentWithProviders.actualProviders;
-          } else {
-            // Fallback to any content with provider balancing
-            const selectedContentWithProviders = selectBalancedContent(contentWithProviders);
-            selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
-            finalProviders = selectedContentWithProviders.actualProviders;
-          }
-        } else if (availableContent.length > 0) {
-          // Use content with matching providers that hasn't been used, with provider balancing
-          const selectedContentWithProviders = selectBalancedContent(availableContent);
-          selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
-          finalProviders = selectedContentWithProviders.actualProviders;
-        } else {
-          // If all content has been used, reset and use any content with balancing
-          console.log("All content with providers has been used, resetting...");
-          resetUsedContent();
-          const selectedContentWithProviders = selectBalancedContent(contentWithProviders);
-          selectedContent = selectedContentWithProviders as TMDBMovie | TMDBShow;
-          finalProviders = selectedContentWithProviders.actualProviders;
-        }
-        } else {
-        // Filter out already used content from fallback
-        const availableContent = allContent.filter(item => !usedContentIds.has(item.id));
-        
-        if (availableContent.length > 0) {
-          // Use balanced selection for fallback content too
-          const randomIndex = Math.floor(Math.random() * availableContent.length);
-          selectedContent = availableContent[randomIndex];
-        } else {
-          // If all content has been used, reset and use any content
-          console.log("All fallback content has been used, resetting...");
-          resetUsedContent();
-          const randomIndex = Math.floor(Math.random() * allContent.length);
-          selectedContent = allContent[randomIndex];
-        }
-        
-        try {
-          const providers = await getProviders(
-            'title' in selectedContent ? 'movie' : 'tv', 
-            selectedContent.id
-          );
-          finalProviders = formatProviders(providers);
-        } catch (error) {
-          console.error('Error fetching providers:', error);
-          finalProviders = [];
-        }
-      }
-      
-      // Format and display the content
-      updateLoadingProgress('Finalizing recommendation...');
-      console.log("🎉 SUCCESS! Selected content ID:", selectedContent.id, "Title:", 'title' in selectedContent ? selectedContent.title : selectedContent.name);
-      console.log("Content type:", 'title' in selectedContent ? 'movie' : 'tv');
-      console.log("All content length:", allContent.length);
-      console.log("Content with providers length:", contentWithProviders.length);
-      console.log("Used content IDs:", Array.from(usedContentIds));
-      console.log("Available content after filtering:", contentWithProviders.filter(item => !usedContentIds.has(item.id)).length);
-      
-      console.log("🔄 Formatting content item...");
-      const formattedContent = await formatContentItem(selectedContent, finalProviders);
-      console.log("✅ Content formatted successfully:", formattedContent.title);
 
-      // If user selected maturity ratings, enforce filter here as a final guard
-      if (selectedRatings.length > 0) {
-        if (!formattedContent.rating) {
-          console.log('Content has no rating, filtering out:', formattedContent.title);
-          setIsSpinning(false);
-          setSpinsRemaining((prev: number) => prev + 1);
-          return;
-        }
-        
-        const allowed = selectedRatings.includes(formattedContent.rating);
-        if (!allowed) {
-          // Skip and try again quickly
-          console.log(`Final filter: Content "${formattedContent.title}" with rating "${formattedContent.rating}" not in selected ratings: ${selectedRatings.join(', ')}`);
-          setIsSpinning(false);
-          setSpinsRemaining((prev: number) => prev + 1);
-          return;
-        }
-        
-        console.log(`Content "${formattedContent.title}" with rating "${formattedContent.rating}" passed final rating filter`);
-      }
+      const usedIdsSnapshot = new Set(usedContentIds);
       
-      // Add the selected content ID to used set
-      setUsedContentIds((prev: Set<number>) => new Set([...prev, selectedContent.id]));
-        
-        setTimeout(() => {
-          setCurrentContent(formattedContent);
+      const seenThisSpin = new Set<number>();
+      let hasResetUsedContent = false;
+      let formattedContent: ContentItem | null = null;
+      let selectedContent: TMDBMovie | TMDBShow | null = null;
+      let providersForContent: string[] = [];
+
+      for (let attempt = 0; attempt < 12 && !formattedContent; attempt++) {
+        let candidate: TMDBMovie | TMDBShow | null = null;
+        let candidateProviders: string[] = [];
+        let ratingHint: string | null | undefined = undefined;
+
+        if (contentWithProviders.length > 0) {
+          const availableContent = contentWithProviders.filter(item => !usedIdsSnapshot.has(item.id) && !seenThisSpin.has(item.id));
+
+          if (availableContent.length === 0) {
+            if (!hasResetUsedContent && contentWithProviders.length > 10) {
+              console.log("Resetting used content due to exhausted provider matches");
+              resetUsedContent();
+              usedIdsSnapshot.clear();
+              hasResetUsedContent = true;
+              continue;
+            }
+          } else {
+            const selectedContentWithProviders = selectBalancedContent(availableContent);
+            candidate = selectedContentWithProviders as TMDBMovie | TMDBShow;
+            candidateProviders = selectedContentWithProviders.actualProviders;
+            ratingHint = selectedContentWithProviders.prefetchedRating;
+            seenThisSpin.add(selectedContentWithProviders.id);
+          }
+        }
+
+        if (!candidate) {
+          const fallbackPool = allContent.filter(item => !usedIdsSnapshot.has(item.id) && !seenThisSpin.has(item.id));
+
+          if (fallbackPool.length === 0) {
+            if (!hasResetUsedContent) {
+              console.log("Resetting used content due to exhausted fallback options");
+              resetUsedContent();
+              usedIdsSnapshot.clear();
+              hasResetUsedContent = true;
+              continue;
+            }
+            break;
+          }
+
+          const randomIndex = Math.floor(Math.random() * fallbackPool.length);
+          candidate = fallbackPool[randomIndex];
+          seenThisSpin.add(candidate.id);
+
+          try {
+            const providers = await getProviders(
+              'title' in candidate ? 'movie' : 'tv',
+              candidate.id
+            );
+            candidateProviders = formatProviders(providers);
+          } catch (error) {
+            console.error('Error fetching providers for fallback candidate:', error);
+            candidateProviders = [];
+          }
+        }
+
+        if (!candidate) {
+          continue;
+        }
+
+        updateLoadingProgress('Finalizing recommendation...');
+        console.log("Evaluating candidate:", 'title' in candidate ? candidate.title : candidate.name, "(ID:", candidate.id, ")");
+
+        try {
+          const candidateContent = await formatContentItem(candidate, candidateProviders, { ratingHint });
+
+          if (selectedRatings.length > 0) {
+            if (!candidateContent.rating || !selectedRatings.includes(candidateContent.rating)) {
+              console.log(`Skipping candidate ${candidateContent.title} due to rating mismatch: ${candidateContent.rating}`);
+              continue;
+            }
+          }
+
+          formattedContent = candidateContent;
+          selectedContent = candidate;
+          providersForContent = candidateProviders;
+        } catch (formatError) {
+          console.error('Error formatting candidate content:', formatError);
+          continue;
+        }
+      }
+
+      if (!formattedContent || !selectedContent) {
+        throw createError(
+          ErrorType.NO_CONTENT,
+          'We could not find a title that matches all of your selections. Try relaxing a filter and spinning again!',
+          'All candidate titles were filtered out or failed to load'
+        );
+      }
+
+      console.log("🎉 SUCCESS! Selected content ID:", selectedContent.id, "Title:", 'title' in selectedContent ? selectedContent.title : selectedContent.name);
+      console.log("Providers considered:", providersForContent);
+
+      const selectedContentId = selectedContent.id;
+
+      usedIdsSnapshot.add(selectedContentId);
+
+      setUsedContentIds((prev: Set<number>) => {
+        const updated = new Set(prev);
+        updated.add(selectedContentId);
+        return updated;
+      });
+
+      const finalContent = formattedContent;
+
+      setTimeout(() => {
+        setCurrentContent(finalContent);
           setSuggestedItems((prev: (ContentItem | null)[]) => {
             // Find the first empty slot (null) and place the new item there
             const newItems = [...prev];
@@ -820,10 +863,10 @@ const StreamingSlotMachine = () => {
             
             if (firstEmptyIndex !== -1 && firstEmptyIndex < 3) {
               // Place in the first available empty slot
-              newItems[firstEmptyIndex] = formattedContent;
+              newItems[firstEmptyIndex] = finalContent;
             } else if (newItems.length < 3) {
               // If array is shorter than 3, add to the end
-              newItems.push(formattedContent);
+              newItems.push(finalContent);
             }
             
             // Ensure we always have exactly 3 slots (fill with null if needed)
