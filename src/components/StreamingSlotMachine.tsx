@@ -132,7 +132,8 @@ const StreamingSlotMachine: React.FC = () => {
   });
 
   // Separate maturity ratings for movies and TV
-  const movieRatings: string[] = ['G', 'PG', 'PG-13', 'R', 'NC-17'];
+  // TMDB rarely returns NC-17 certifications for streaming-available titles, so omit it from the picker
+  const movieRatings: string[] = ['G', 'PG', 'PG-13', 'R'];
   const tvRatings: string[] = ['TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA'];
   
   // Combined for backward compatibility
