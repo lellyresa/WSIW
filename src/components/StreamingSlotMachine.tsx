@@ -90,7 +90,7 @@ const streamingServices = [
   { name: 'Apple TV+', color: '#000000' }
 ];
 
-const StreamingSlotMachine = () => {
+const StreamingSlotMachine: React.FC = () => {
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [selectedContentTypes, setSelectedContentTypes] = useState<('movie' | 'tv')[]>([]);
@@ -388,7 +388,11 @@ const StreamingSlotMachine = () => {
   const PROVIDER_MATCH_TARGET = 8;
   const PROVIDER_CONCURRENCY = 4;
 
-  const runWithConcurrency = async <T>(items: T[], limit: number, handler: (item: T, index: number) => Promise<void>) => {
+  async function runWithConcurrency<T>(
+    items: T[],
+    limit: number,
+    handler: (item: T, index: number) => Promise<void>
+  ) {
     if (items.length === 0) {
       return;
     }
@@ -409,7 +413,7 @@ const StreamingSlotMachine = () => {
     );
 
     await Promise.all(workers);
-  };
+  }
 
   // Process content to find items with matching providers
   const findContentWithMatchingProviders = async (allContent: (TMDBMovie | TMDBShow)[]): Promise<ContentWithProviders[]> => {
